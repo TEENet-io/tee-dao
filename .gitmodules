@@ -1,0 +1,3 @@
+[submodule "secp256k1-frost"]
+	path = secp256k1-frost
+	url = https://github.com/Payson1019/secp256k1-frost.git
