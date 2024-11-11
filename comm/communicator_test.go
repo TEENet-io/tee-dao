@@ -10,7 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func setup(t *testing.T, ports []string, handleMessageFuncs []func([]byte)) []*Communicator {
+const (
+	TestMsg MessageType = 0x03
+)
+
+func setup(t *testing.T, ports []string, handleMessageFuncs []func(Message)) []*Communicator {
 	dir, err := os.Getwd()
 	assert.NoError(t, err)
 	dir = filepath.Join(dir, "../config/data")
@@ -19,7 +23,8 @@ func setup(t *testing.T, ports []string, handleMessageFuncs []func([]byte)) []*C
 
 	cs := []*Communicator{}
 	for i, cfg := range cfgs {
-		c, err := NewCommunicator(cfg, handleMessageFuncs[i])
+		c, err := NewCommunicator(cfg)
+		c.RegisterHandler("Test", TestMsg, handleMessageFuncs[i])
 		assert.NoError(t, err)
 		cs = append(cs, c)
 	}
@@ -29,10 +34,10 @@ func setup(t *testing.T, ports []string, handleMessageFuncs []func([]byte)) []*C
 
 func TestConnectionEstablishment(t *testing.T) {
 	ports := []string{"8444", "8445", "8446"}
-	funcs := []func([]byte){}
+	funcs := []func(Message){}
 	for i := 0; i < len(ports); i++ {
-		funcs = append(funcs, func(d []byte) {
-			fmt.Printf("PRINT node=node%d msg: %s\n", i+1, string(d))
+		funcs = append(funcs, func(msg Message) {
+			fmt.Printf("PRINT node=node%d msg: %s\n", i+1, string(msg.Data))
 		})
 	}
 
@@ -60,10 +65,10 @@ func TestConnectionEstablishment(t *testing.T) {
 
 func TestP2PCommunication(t *testing.T) {
 	ports := []string{"8444", "8445", "8446"}
-	funcs := []func([]byte){}
+	funcs := []func(Message){}
 	for i := 0; i < len(ports); i++ {
-		funcs = append(funcs, func(d []byte) {
-			fmt.Printf("PRINT node=node%d msg: %s\n", i+1, string(d))
+		funcs = append(funcs, func(msg Message) {
+			fmt.Printf("PRINT node=node%d msg: %s\n", i+1, string(msg.Data))
 		})
 	}
 
@@ -76,11 +81,19 @@ func TestP2PCommunication(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	for _, c := range cs {
-		msg := fmt.Sprintf("P2P message from %s", c.SelfName())
+		data := fmt.Sprintf("P2P message from %s", c.SelfName())
 		for _, name := range c.PeerNames() {
 			peer := c.GetPeer(name)
+			msg := Message{
+				MsgType: TestMsg,
+				Data:    []byte(data),
+				From:    c.cfg.Name,
+				To:      name,
+			}
+			serializedMsg, err := msg.Serialize()
+			assert.NoError(t, err)
 			if peer != nil {
-				err := peer.Write([]byte(msg))
+				err := peer.Write(serializedMsg)
 				assert.NoError(t, err)
 			}
 		}
@@ -95,10 +108,10 @@ func TestP2PCommunication(t *testing.T) {
 
 func TestBroadcast(t *testing.T) {
 	ports := []string{"8444", "8445", "8446"}
-	funcs := []func([]byte){}
+	funcs := []func(Message){}
 	for i := 0; i < len(ports); i++ {
-		funcs = append(funcs, func(d []byte) {
-			fmt.Printf("PRINT node=node%d msg: %s\n", i+1, string(d))
+		funcs = append(funcs, func(msg Message) {
+			fmt.Printf("PRINT node=node%d msg: %s\n", i+1, string(msg.Data))
 		})
 	}
 
@@ -111,8 +124,16 @@ func TestBroadcast(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	for _, c := range cs {
-		msg := fmt.Sprintf("Broadcast message from %s", c.SelfName())
-		err := c.Broadcast([]byte(msg))
+		data := fmt.Sprintf("Broadcast message from %s", c.SelfName())
+		msg := Message{
+			MsgType: TestMsg,
+			Data:    []byte(data),
+			From:    c.cfg.Name,
+			To:      "all",
+		}
+		serializedMsg, err := msg.Serialize()
+		assert.NoError(t, err)
+		err = c.Broadcast(serializedMsg)
 		assert.NoError(t, err)
 	}
 

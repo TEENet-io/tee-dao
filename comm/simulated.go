@@ -5,25 +5,6 @@ import (
 	"path/filepath"
 )
 
-const (
-	MsgTypePing   MessageType = 0x02
-	MsgTypePong   MessageType = 0x03
-	MsgTypeCustom MessageType = 0x04
-)
-
-func msgType(t MessageType) string {
-	switch t {
-	case MsgTypePing:
-		return "Ping"
-	case MsgTypePong:
-		return "Pong"
-	case MsgTypeCustom:
-		return "Custom"
-	default:
-		return "Unknown"
-	}
-}
-
 func prepareTest(dir string, ports []string) []*Config {
 	names := []string{}
 	addresses := []string{}

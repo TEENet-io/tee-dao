@@ -3,16 +3,19 @@ package comm
 import (
 	"context"
 	"fmt"
-	"log"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+)
+
+const (
+	MsgTypeCustom MessageType = 0x03
 )
 
 func TestPeer(t *testing.T) {
@@ -29,6 +32,7 @@ func TestPeer(t *testing.T) {
 
 	msgCh := make(chan []byte, MsgChanSize)
 
+	RegisterMessageType(MsgTypeCustom, "Custom")
 	var wg sync.WaitGroup
 	wg.Add(1)
 	go func() {
@@ -39,11 +43,6 @@ func TestPeer(t *testing.T) {
 			case <-ctx.Done():
 				return
 			case data := <-msgCh:
-				if strings.HasPrefix(string(data), "ping") {
-					// Ignore or log ping messages without attempting deserialization
-					log.Printf("Received a ping message: %s", string(data))
-					continue
-				}
 				myMsg := &Message{}
 
 				err := myMsg.Deserialize(data)
@@ -57,7 +56,8 @@ func TestPeer(t *testing.T) {
 	}()
 
 	srvHandleConn := func(ctx context.Context, conn net.Conn) {
-		peer := NewPeer(ctx, clientCfg.Name, conn, msgCh)
+		nonce := rand.Uint32()
+		peer := NewPeer(ctx, clientCfg.Name, nonce, conn, msgCh)
 		defer peer.Close()
 
 		wg1 := sync.WaitGroup{}
@@ -95,7 +95,8 @@ func TestPeer(t *testing.T) {
 	time.Sleep(1 * time.Second)
 
 	clientHandleConn := func(ctx context.Context, conn net.Conn) {
-		peer := NewPeer(ctx, srvCfg.Name, conn, msgCh)
+		nonce := rand.Uint32()
+		peer := NewPeer(ctx, srvCfg.Name, nonce, conn, msgCh)
 		defer peer.Close()
 
 		wg2 := sync.WaitGroup{}

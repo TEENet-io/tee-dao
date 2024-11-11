@@ -20,9 +20,12 @@ var (
 type Peer struct {
 	ctx context.Context
 
-	name string
-	conn net.Conn
-	mu   sync.Mutex
+	// TODO: Each peer has a unique identifier, typically a string or a hashed address (e.g., peerID = SHA-256 hash of its network address).
+	// Now use 'name' for demo.
+	name  string
+	nonce uint32
+	conn  net.Conn
+	mu    sync.Mutex
 
 	// channel to send received messages to
 	msgCh chan []byte
@@ -30,15 +33,17 @@ type Peer struct {
 	logger *slog.Logger
 }
 
-func NewPeer(ctx context.Context, name string, conn net.Conn, msgCh chan []byte) *Peer {
+func NewPeer(ctx context.Context, name string, nonce uint32, conn net.Conn, msgCh chan []byte) *Peer {
 	peerlogger := logger.New(logLvl).
 		With("peer", name).
+		With("nonce", nonce).
 		With("local", conn.LocalAddr().String()).
 		With("remote", conn.RemoteAddr().String())
 
 	return &Peer{
 		ctx:    ctx,
 		name:   name,
+		nonce:  nonce,
 		conn:   conn,
 		msgCh:  msgCh,
 		logger: peerlogger,
@@ -98,7 +103,18 @@ func (p *Peer) Close() {
 // Ping sends a ping message to the peer
 func (p *Peer) Ping() error {
 	msg := fmt.Sprintf("ping %s->%s", p.conn.LocalAddr().String(), p.conn.RemoteAddr().String())
-	return p.safeWrite([]byte(msg))
+	pingMsg := Message{
+		MsgType:  MsgTypePing,
+		From:     p.name,
+		Data:     []byte(msg),
+		CreateAt: time.Now(),
+	}
+	serializedPingMsg, err := pingMsg.Serialize()
+	if err != nil {
+		p.logger.With("func", "Ping").Error("fail to serialize data")
+		return err
+	}
+	return p.Write(serializedPingMsg)
 }
 
 func (p *Peer) safeWrite(data []byte) error {
@@ -109,10 +125,12 @@ func (p *Peer) safeWrite(data []byte) error {
 	return err
 }
 
-func (p *Peer) SetName(name string) {
+func (p *Peer) SetProperty(name string, nonce uint32) {
 	p.name = name
+	p.nonce = nonce
 	p.logger = logger.New(logLvl).
 		With("peer", name).
+		With("nonce", nonce).
 		With("local", p.conn.LocalAddr().String()).
 		With("remote", p.conn.RemoteAddr().String())
 }

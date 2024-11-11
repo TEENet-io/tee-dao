@@ -6,7 +6,6 @@ import (
 	"distributed-multisig/logger"
 	"fmt"
 	"log/slog"
-	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -55,13 +54,19 @@ func NewParticipant(leader string, config *comm.Config, isLeader bool, id int, n
 	// Initialize context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
 
-	return &Participant{
+	commLayer, err := comm.NewCommunicator(config)
+	if err != nil {
+		return nil, err
+	}
+
+	p := &Participant{
 		Name:                     config.Name,
 		ID:                       id,
 		NumParticipants:          numParticipants,
 		MinSigner:                minSigner,
 		IDNameMap:                idNameMapping,
 		Config:                   config,
+		Communicator:             commLayer,
 		Context:                  signContext,
 		Tag:                      tag,
 		Commitments:              make(map[int]*Secp256k1FrostVssCommitments),
@@ -83,16 +88,23 @@ func NewParticipant(leader string, config *comm.Config, isLeader bool, id int, n
 		ctx:                      ctx,
 		cancel:                   cancel,
 		logger:                   logger.New(slog.LevelInfo).With("participant", config.Name),
-	}, nil
+	}
+
+	// Register custom message handlers
+	p.Communicator.RegisterHandler("DKGSecretShare", DKGSecretShare, p.handleDKGSecretShare)
+	p.Communicator.RegisterHandler("ReadyForPreprocessing", ReadyForPreprocessing, p.handleReadyForPreprocessing)
+	p.Communicator.RegisterHandler("PreprocessingRequest", PreprocessingRequest, p.handlePreprocessingRequest)
+	p.Communicator.RegisterHandler("NonceCommitmentExchange", NonceCommitmentExchange, p.handleNonceCommitmentExchange)
+	p.Communicator.RegisterHandler("ReadyForSign", ReadyForSign, p.handleReadyForSign)
+	p.Communicator.RegisterHandler("SignRequest", SignRequest, p.handleSignRequest)
+	p.Communicator.RegisterHandler("SignatureShareResponse", SignatureShareResponse, p.handleSignatureShareResponse)
+
+	return p, nil
 }
 
 // start initializes and starts the communicator
 func (p *Participant) Start() error {
-	commLayer, err := comm.NewCommunicator(p.Config, p.handleMessage)
-	if err != nil {
-		return err
-	}
-	p.Communicator = commLayer
+
 	// Add to the WaitGroup for handling messages
 	p.wg.Add(1)
 	go func() {
@@ -104,7 +116,7 @@ func (p *Participant) Start() error {
 		p.logger.Info("Participant stopped listening for messages.")
 	}()
 
-	time.Sleep(20 * time.Second)
+	time.Sleep(10 * time.Second)
 	p.initiateDKG()
 	return nil
 }
@@ -376,38 +388,33 @@ func (p *Participant) initiateSigning(sequence int) {
 	p.logger.Info("Sent SignRequest to all participants")
 }
 
-// handleMessage processes an incoming message based on its type.
-func (p *Participant) handleMessage(data []byte) {
-	if strings.HasPrefix(string(data), "ping") {
-		// Ignore or log ping messages without attempting deserialization
-		p.logger.With("func", "handleMessage").Debug("Received a ping message", "data", string(data))
-		return
-	}
-	var msg comm.Message
-	if err := msg.Deserialize(data); err != nil {
-		p.logger.With("func", "handleMessage").Error("Failed to deserialize message", "data", string(data), "err", err)
-		return
-	}
+// // handleMessage processes an incoming message based on its type.
+// func (p *Participant) handleMessage(data []byte) {
+// 	var msg comm.Message
+// 	if err := msg.Deserialize(data); err != nil {
+// 		p.logger.With("func", "handleMessage").Error("Failed to deserialize message", "data", string(data), "err", err)
+// 		return
+// 	}
 
-	switch msg.MsgType {
-	case DKGSecretShare:
-		p.handleDKGSecretShare(msg)
-	case ReadyForPreprocessing:
-		p.handleReadyForPreprocessing(msg)
-	case PreprocessingRequest:
-		p.handlePreprocessingRequest(msg)
-	case NonceCommitmentExchange:
-		p.handleNonceExchange(msg)
-	case ReadyForSign:
-		p.handleReadyForSign(msg)
-	case SignRequest:
-		p.handleSignRequest(msg)
-	case SignatureShareResponse:
-		p.handleSignatureShareResponse(msg)
-	default:
-		p.logger.With("func", "handleMessage").Debug("Received unknown message type", "type", msg.MsgType)
-	}
-}
+// 	switch msg.MsgType {
+// 	case DKGSecretShare:
+// 		p.handleDKGSecretShare(msg)
+// 	case ReadyForPreprocessing:
+// 		p.handleReadyForPreprocessing(msg)
+// 	case PreprocessingRequest:
+// 		p.handlePreprocessingRequest(msg)
+// 	case NonceCommitmentExchange:
+// 		p.handleNonceExchange(msg)
+// 	case ReadyForSign:
+// 		p.handleReadyForSign(msg)
+// 	case SignRequest:
+// 		p.handleSignRequest(msg)
+// 	case SignatureShareResponse:
+// 		p.handleSignatureShareResponse(msg)
+// 	default:
+// 		p.logger.With("func", "handleMessage").Debug("Received unknown message type", "type", msg.MsgType)
+// 	}
+// }
 
 // handleDKGSecretShare handles the DKG secret share message by verifying and storing the share.
 func (p *Participant) handleDKGSecretShare(msg comm.Message) {
@@ -596,25 +603,25 @@ func (p *Participant) handlePreprocessingRequest(msg comm.Message) {
 }
 
 // handleNonceExchange processes nonce exchange messages by verifying and storing the nonce.
-func (p *Participant) handleNonceExchange(msg comm.Message) {
-	p.logger.With("func", "handleNonceExchange").Debug("Received Nonce Exchange", "from", msg.From)
+func (p *Participant) handleNonceCommitmentExchange(msg comm.Message) {
+	p.logger.With("func", "handleNonceCommitmentExchange").Debug("Received Nonce Commitment Exchange", "from", msg.From)
 
 	// Deserialize the NonceCommitment directly
 	var nonceCommitment NonceCommitment
 	if err := nonceCommitment.Deserialize(msg.Data); err != nil {
-		p.logger.With("func", "handleNonceExchange").Error("Failed to deserialize nonce commitment", "err", err)
+		p.logger.With("func", "handleNonceCommitmentExchange").Error("Failed to deserialize nonce commitment", "err", err)
 		return
 	}
 
 	senderID, exist := p.GetIDByName(msg.From)
 	if !exist {
-		p.logger.With("func", "handleNonceExchange").Error("Participant does not exist", "from", msg.From)
+		p.logger.With("func", "handleNonceCommitmentExchange").Error("Participant does not exist", "from", msg.From)
 		return
 	}
 
 	// Store the NonceCommitment for future signing
 	p.NonceCommitments[nonceCommitment.Sequence][senderID] = nonceCommitment.NonceCommitment
-	p.logger.With("func", "handleNonceExchange").Debug("Stored nonce commitment", "from", msg.From, "sequence", nonceCommitment.Sequence)
+	p.logger.With("func", "handleNonceCommitmentExchange").Debug("Stored nonce commitment", "from", msg.From, "sequence", nonceCommitment.Sequence)
 
 	// Check if received enough nonces to start signing
 	// TODO: In demo, we are assuming all participants have sent nonce commitments. Actually, only the minimum signers are needed but all the signer should have a consensus on the same set.

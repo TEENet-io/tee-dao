@@ -17,27 +17,6 @@ const (
 	SignatureShareResponse  comm.MessageType = 0x0b
 )
 
-func msgType(t comm.MessageType) string {
-	switch t {
-	case DKGSecretShare:
-		return "DKGSecretShare"
-	case ReadyForPreprocessing:
-		return "ReadyForPreprocessing"
-	case PreprocessingRequest:
-		return "PreprocessingRequest"
-	case NonceCommitmentExchange:
-		return "NonceCommitmentExchange"
-	case ReadyForSign:
-		return "ReadyForSign"
-	case SignRequest:
-		return "SignRequest"
-	case SignatureShareResponse:
-		return "SignatureShareResponse"
-	default:
-		return "Unknown"
-	}
-}
-
 // SecretShareWithCommitment Struct
 type SecretShareWithCommitment struct {
 	SecretShare Secp256k1FrostKeygenSecretShare

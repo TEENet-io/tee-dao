@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"sync"
 	"time"
 )
 
@@ -11,7 +12,31 @@ type MessageType byte
 
 const (
 	MsgTypeSetUp MessageType = 0x01
+	MsgTypePing  MessageType = 0x02
 )
+
+var (
+	messageTypeNames = map[MessageType]string{
+		MsgTypeSetUp: "SetUp",
+		MsgTypePing:  "Ping",
+	}
+	messageTypeNamesMu sync.RWMutex
+)
+
+func RegisterMessageType(t MessageType, name string) {
+	messageTypeNamesMu.Lock()
+	defer messageTypeNamesMu.Unlock()
+	messageTypeNames[t] = name
+}
+
+func msgType(t MessageType) string {
+	messageTypeNamesMu.RLock()
+	defer messageTypeNamesMu.RUnlock()
+	if name, exists := messageTypeNames[t]; exists {
+		return name
+	}
+	return "Unknown"
+}
 
 type Message struct {
 	MsgType  MessageType
