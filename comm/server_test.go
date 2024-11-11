@@ -34,7 +34,7 @@ func TestServerWhenClientCloseConn(t *testing.T) {
 	for _, dialer := range dialers {
 		dial(
 			context.Background(),
-			dialer.ClientCert, dialer.ClientKey, srv.CACert, srv.Address,
+			dialer.Cert, dialer.Key, srv.CACert, srv.Address,
 			handleConn2, &wg,
 		)
 	}
@@ -62,7 +62,7 @@ func TestServerWhenServerCloseConn(t *testing.T) {
 	for _, dialer := range dialers {
 		dial(
 			context.Background(),
-			dialer.ClientCert, dialer.ClientKey, srv.CACert, srv.Address,
+			dialer.Cert, dialer.Key, srv.CACert, srv.Address,
 			handleConn1, &wg,
 		)
 	}
@@ -129,11 +129,11 @@ func handleConn2(ctx context.Context, conn net.Conn) {
 
 func dial(
 	ctx context.Context,
-	clientCertFile, clientKeyFile, caCertFile, srvAddr string,
+	certFile, keyFile, caCertFile, srvAddr string,
 	handConn func(context.Context, net.Conn),
 	wg *sync.WaitGroup,
 ) {
-	cert, err := tls.LoadX509KeyPair(clientCertFile, clientKeyFile)
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		fmt.Printf("DIAL: Failed to load client certificate: err=%v\n", err)
 		return

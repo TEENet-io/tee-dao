@@ -11,12 +11,8 @@ type Config struct {
 	Address string
 
 	// paths to the TLS certificate and key used to run a TLS server
-	ServerCert string
-	ServerKey  string
-
-	// paths to the TLS certificate and key used to connect to other nodes
-	ClientCert string
-	ClientKey  string
+	Cert string
+	Key  string
 
 	// path to the CA certificate used to generate the above certificates
 	CACert string

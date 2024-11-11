@@ -41,8 +41,7 @@ type Communicator struct {
 	peers map[string]*Peer
 	mu    sync.Mutex
 
-	msgCh chan []byte
-	// handleMessage func([]byte)
+	msgCh    chan []byte
 	handlers map[MessageType]MessageHandler
 
 	logger *slog.Logger
@@ -51,14 +50,13 @@ type Communicator struct {
 
 func NewCommunicator(
 	cfg *Config,
-	// handleMessage func([]byte),
 ) (*Communicator, error) {
 	peerInfo := make(map[string]*PeerConfig)
 	for _, peer := range cfg.Peers {
 		peerInfo[peer.Name] = &peer
 	}
 
-	cert, err := tls.LoadX509KeyPair(cfg.ClientCert, cfg.ClientKey)
+	cert, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -82,10 +80,9 @@ func NewCommunicator(
 		peerCACerts: peerCACerts,
 		peerInfo:    peerInfo,
 		peers:       make(map[string]*Peer),
-		// handleMessage: handleMessage,
-		handlers: make(map[MessageType]MessageHandler),
-		msgCh:    make(chan []byte, MsgChanSize),
-		logger:   logger.New(logLvl).With("communicator", cfg.Name),
+		handlers:    make(map[MessageType]MessageHandler),
+		msgCh:       make(chan []byte, MsgChanSize),
+		logger:      logger.New(logLvl).With("communicator", cfg.Name),
 	}
 
 	// Register base message handlers
@@ -151,8 +148,6 @@ func (c *Communicator) Start() error {
 			c.connect(name)
 		}()
 	}
-
-	// time.Sleep(FreqToPing)
 
 	// start the heartbeat loop
 	c.wg.Add(1)
@@ -294,21 +289,6 @@ func (c *Communicator) connect(name string) error {
 		return err
 	}
 
-	// // receive setup message from the peer
-	// data, err := peer.Read()
-	// if err != nil {
-	// 	c.logger.With("func", "handleConn").Error("failed to read peer name, closing connection", slog.String("peer", name))
-	// 	peer.Close()
-	// 	return err
-	// }
-
-	// var peerSetupMsg Message
-	// if err := peerSetupMsg.Deserialize(data); err != nil {
-	// 	c.logger.With("func", "handleConn").Error("failed to deserialize data, closing connection", slog.String("peer", name))
-	// 	peer.Close()
-	// 	return err
-	// }
-
 	if !c.SetPeer(peer) {
 		c.logger.With("func", "connect").Debug("failed to set peer, closing connection", slog.String("peer", name))
 		peer.Close()
@@ -344,26 +324,6 @@ func (c *Communicator) handleConn(ctx context.Context, conn net.Conn) {
 
 	peerNonce := binary.BigEndian.Uint32(peerSetupMsg.Data)
 	peer.SetProperty(peerSetupMsg.From, peerNonce)
-
-	// // send setup message to the peer
-	// mySetupMsg := Message{
-	// 	MsgType:  MsgTypeSetUp,
-	// 	From:     c.cfg.Name,
-	// 	Data:     []byte(c.cfg.Name),
-	// 	CreateAt: time.Now(),
-	// }
-	// serializedMySetupMsg, err := mySetupMsg.Serialize()
-	// if err != nil {
-	// 	c.logger.With("func", "connect").Error("fail to serialize data, closing connection", slog.String("err", err.Error()))
-	// 	peer.Close()
-	// 	return
-	// }
-
-	// if err := peer.Write(serializedMySetupMsg); err != nil {
-	// 	c.logger.With("func", "connect").Error("fail to send setup message, closing connection", slog.String("peer", peerSetupMsg.From), "err", err.Error())
-	// 	peer.Close()
-	// 	return
-	// }
 
 	// set the peer
 	if !c.SetPeer(peer) {
@@ -411,24 +371,6 @@ func (c *Communicator) handleMessage(data []byte) {
 		c.logger.With("func", "handleMessage").Debug("Received unknown message type", "type", msg.MsgType)
 	}
 }
-
-// // handleMessage processes an incoming message based on its type.
-// func (c *Communicator) handleMessage(data []byte) {
-// 	var msg Message
-// 	if err := msg.Deserialize(data); err != nil {
-// 		c.logger.With("func", "handleMessage").Error("Failed to deserialize message", "data", string(data), "err", err)
-// 		return
-// 	}
-
-// 	switch msg.MsgType {
-// 	case MsgTypePing:
-// 		c.handlePing(msg)
-// 	case MsgTypeCustom:
-// 		c.handleCustom(msg)
-// 	default:
-// 		c.logger.With("func", "handleMessage").Debug("Received unknown message type", "type", msg.MsgType)
-// 	}
-// }
 
 // Handler for MsgTypePing
 func (c *Communicator) handlePing(msg Message) {

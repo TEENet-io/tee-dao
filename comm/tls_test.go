@@ -18,11 +18,11 @@ func TestTLS(t *testing.T) {
 
 	cfgs := prepareTest(dir, []string{"10004", "10005"})
 
-	go startTLSServer(t, cfgs[0].ServerCert, cfgs[0].ServerKey, cfgs[1].CACert)
+	go startTLSServer(t, cfgs[0].Cert, cfgs[0].Key, cfgs[1].CACert)
 
 	time.Sleep(1 * time.Second)
 
-	startTLSClient(t, cfgs[1].ClientCert, cfgs[1].ClientKey, cfgs[0].CACert)
+	startTLSClient(t, cfgs[1].Cert, cfgs[1].Key, cfgs[0].CACert)
 }
 
 func startTLSClient(t *testing.T, clientCertFile, clientKeyFile, caCertFile string) {

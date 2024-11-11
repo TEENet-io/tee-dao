@@ -50,9 +50,9 @@ func (srv *Server) Close() {
 func (srv *Server) Listen() {
 	srv.logger.Info("Starting TLS server")
 
-	// srv.logger.Debug("Loading server key pair",
-	// slog.String("cert", srv.cfg.ServerCert), slog.String("key", srv.cfg.ServerKey))
-	serverCert, err := tls.LoadX509KeyPair(srv.cfg.ServerCert, srv.cfg.ServerKey)
+	srv.logger.Debug("Loading server key pair",
+		slog.String("cert", srv.cfg.Cert), slog.String("key", srv.cfg.Key))
+	serverCert, err := tls.LoadX509KeyPair(srv.cfg.Cert, srv.cfg.Key)
 	if err != nil {
 		srv.logger.Error("Failed to load server certificate", slog.String("err", err.Error()))
 		return
@@ -60,7 +60,7 @@ func (srv *Server) Listen() {
 
 	caCertPool := x509.NewCertPool()
 	for _, peer := range srv.cfg.Peers {
-		// srv.logger.Debug("Loading client CA cert", slog.String("ca", peer.CACert))
+		srv.logger.Debug("Loading CA cert", slog.String("ca", peer.CACert))
 		caCert, err := os.ReadFile(peer.CACert)
 		if err != nil {
 			srv.logger.Error("Failed to read CA certifcate", slog.String("err", err.Error()))

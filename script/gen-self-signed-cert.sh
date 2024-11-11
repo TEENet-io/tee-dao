@@ -25,10 +25,6 @@ SERVER_KEY="${NAME}-server.key"
 SERVER_CSR="${NAME}-server.csr"
 SERVER_CERT="${NAME}-server.crt"
 
-CLIENT_KEY="${NAME}-client.key"
-CLIENT_CSR="${NAME}-client.csr"
-CLIENT_CERT="${NAME}-client.crt"
-
 DAYS=3650
 SUB="/C=SO/ST=Earth/L=Mountain/O=TEENet/OU=DEV/CN=localhost"
 
@@ -52,16 +48,3 @@ openssl x509 -req -in $SERVER_CSR \
     -CA $CA_CERT -CAkey $CA_KEY \
     -days $DAYS -CAcreateserial \
     -out $SERVER_CERT 
-
-# generate a key for client
-openssl genrsa -out $CLIENT_KEY 2048
-
-# generate a signing request for client
-openssl req -new -key $CLIENT_KEY -out $CLIENT_CSR -subj $SUB
-
-# generate a certificate for client
-openssl x509 -req -in $CLIENT_CSR \
-    -extfile <(printf "subjectAltName=DNS:localhost") \
-    -CA $CA_CERT -CAkey $CA_KEY \
-    -days $DAYS -CAcreateserial \
-    -out $CLIENT_CERT

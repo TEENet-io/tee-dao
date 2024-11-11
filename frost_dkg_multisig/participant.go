@@ -201,10 +201,6 @@ func (p *Participant) initiateDKG() {
 			p.SecretShares[p.ID] = &sharesByParticipant[p.ID]
 			p.Commitments[p.ID] = commitments
 		} else {
-			// serializableCommitments, err := commitments.ToSerializable()
-			// if err != nil {
-			// 	p.logger.With("func", "initiateDKG").Error("Failed to change Secp256k1FrostVssCommitments to SerializableSecp256k1FrostVssCommitments", "err", err)
-			// }
 			shareWithCommitment := &SecretShareWithCommitment{sharesByParticipant[i], commitments}
 			serializedShareWithCommitment, err := shareWithCommitment.Serialize()
 			if err != nil {
@@ -388,34 +384,6 @@ func (p *Participant) initiateSigning(sequence int) {
 	p.logger.Info("Sent SignRequest to all participants")
 }
 
-// // handleMessage processes an incoming message based on its type.
-// func (p *Participant) handleMessage(data []byte) {
-// 	var msg comm.Message
-// 	if err := msg.Deserialize(data); err != nil {
-// 		p.logger.With("func", "handleMessage").Error("Failed to deserialize message", "data", string(data), "err", err)
-// 		return
-// 	}
-
-// 	switch msg.MsgType {
-// 	case DKGSecretShare:
-// 		p.handleDKGSecretShare(msg)
-// 	case ReadyForPreprocessing:
-// 		p.handleReadyForPreprocessing(msg)
-// 	case PreprocessingRequest:
-// 		p.handlePreprocessingRequest(msg)
-// 	case NonceCommitmentExchange:
-// 		p.handleNonceExchange(msg)
-// 	case ReadyForSign:
-// 		p.handleReadyForSign(msg)
-// 	case SignRequest:
-// 		p.handleSignRequest(msg)
-// 	case SignatureShareResponse:
-// 		p.handleSignatureShareResponse(msg)
-// 	default:
-// 		p.logger.With("func", "handleMessage").Debug("Received unknown message type", "type", msg.MsgType)
-// 	}
-// }
-
 // handleDKGSecretShare handles the DKG secret share message by verifying and storing the share.
 func (p *Participant) handleDKGSecretShare(msg comm.Message) {
 	p.logger.Info("Handling DKG Secret Share", "from", msg.From)
@@ -428,10 +396,6 @@ func (p *Participant) handleDKGSecretShare(msg comm.Message) {
 	}
 
 	p.logger.With("func", "handleDKGSecretShare").Debug("Got DKG Secret share", "share", shareWithCommitment.SecretShare, "commitment", shareWithCommitment.Commitment)
-	// commitment, err := shareWithCommitment.Commitment.ToSecp256k1FrostVssCommitments()
-	// if err != nil {
-	// 	p.logger.With("func", "handleDKGSecretShare").Error("Failed to transfer SerializableSecp256k1FrostVssCommitments to Secp256k1FrostVssCommitments", "err", err)
-	// }
 
 	// Verify and store the share and commitment
 	result := KeygenDKGCommitmentValidate(
