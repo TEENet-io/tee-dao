@@ -10,7 +10,7 @@ import (
 	"os"
 	"sync"
 
-	"distributed-multisig/logger"
+	"tee-dao/logger"
 )
 
 type Server struct {

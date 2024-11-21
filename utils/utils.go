@@ -1,17 +1,17 @@
 package utils
 
 import (
-	"distributed-multisig/comm"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
-	"math"
 	"os"
+	"tee-dao/comm"
 )
 
 // GeneralConfig holds the structure for loading config.json
 type GeneralConfig struct {
 	Leader       string            `json:"leader"`
+	Threshold    int               `json:"threshold"`
 	Participants []comm.PeerConfig `json:"participants"`
 }
 
@@ -35,8 +35,8 @@ func LoadGeneralConfig(filePath string) (string, int, int, []comm.PeerConfig, er
 	}
 
 	leader := generalConfig.Leader
+	minSignerCount := generalConfig.Threshold
 	numParticipants := len(generalConfig.Participants)
-	minSignerCount := int(math.Ceil(float64(numParticipants) / 3.0))
 
 	return leader, numParticipants, minSignerCount, generalConfig.Participants, nil
 }

@@ -1,0 +1,8 @@
+{
+    "id": 1,
+    "name": "node1",
+    "address": "localhost:5002",
+    "cert": "config/data/node1-server.crt",
+    "key": "config/data/node1-server.key",
+    "CACert": "config/data/node1-ca.crt"
+}

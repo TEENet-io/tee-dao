@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"distributed-multisig/logger"
+	"tee-dao/logger"
 )
 
 var (

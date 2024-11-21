@@ -2,7 +2,7 @@ package frost_dkg_multisig
 
 import (
 	"bytes"
-	"distributed-multisig/comm"
+	"tee-dao/comm"
 	"testing"
 	"time"
 )
@@ -46,12 +46,12 @@ func TestSecretShareWithCommitment_Serialization(t *testing.T) {
 			ReceiverIndex:  2,
 			Value:          [32]byte{1, 2, 3},
 		},
-		Commitment: &Secp256k1FrostVssCommitments{
+		Commitments: &Secp256k1FrostVssCommitments{
 			Index:                  3,
 			NumCoefficients:        2,
-			CoefficientCommitments: &Secp256k1FrostVssCommitment{[64]byte{4, 5, 6}},
-			ZkpR:                   [64]byte{7, 8, 9},
-			ZkpZ:                   [32]byte{10, 11, 12},
+			CoefficientCommitments: []Secp256k1FrostVssCommitment{{Data: [64]byte{4, 5, 6}}, {Data: [64]byte{7, 8, 9}}},
+			ZkpR:                   [64]byte{10, 11, 12},
+			ZkpZ:                   [32]byte{13, 14, 15},
 		},
 	}
 
@@ -67,11 +67,12 @@ func TestSecretShareWithCommitment_Serialization(t *testing.T) {
 	}
 
 	if share.SecretShare != deserializedShare.SecretShare ||
-		share.Commitment != deserializedShare.Commitment ||
-		share.Commitment.Index != deserializedShare.Commitment.Index ||
-		share.Commitment.NumCoefficients != deserializedShare.Commitment.NumCoefficients ||
-		share.Commitment.ZkpR != deserializedShare.Commitment.ZkpR ||
-		share.Commitment.ZkpZ != deserializedShare.Commitment.ZkpZ {
+		share.Commitments.Index != deserializedShare.Commitments.Index ||
+		share.Commitments.NumCoefficients != deserializedShare.Commitments.NumCoefficients ||
+		share.Commitments.CoefficientCommitments[0] != deserializedShare.Commitments.CoefficientCommitments[0] ||
+		share.Commitments.CoefficientCommitments[1] != deserializedShare.Commitments.CoefficientCommitments[1] ||
+		share.Commitments.ZkpR != deserializedShare.Commitments.ZkpR ||
+		share.Commitments.ZkpZ != deserializedShare.Commitments.ZkpZ {
 		t.Fatalf("Deserialized share does not match original")
 	}
 }

@@ -1,4 +1,4 @@
-module distributed-multisig
+module tee-dao
 
 go 1.23.0
 

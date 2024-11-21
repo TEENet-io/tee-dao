@@ -1,0 +1,9 @@
+{
+    "leader": "node0",
+    "threshold": 2,
+    "participants": [
+        {"id": 0, "name": "node0", "address": "localhost:5001", "CACert": "config/data/node0-ca.crt"},
+        {"id": 1, "name": "node1", "address": "localhost:5002", "CACert": "config/data/node1-ca.crt"},
+        {"id": 2, "name": "node2", "address": "localhost:5003", "CACert": "config/data/node2-ca.crt"}
+    ]
+}

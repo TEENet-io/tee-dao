@@ -2,11 +2,12 @@ package frost_dkg_multisig
 
 import (
 	"context"
-	"distributed-multisig/comm"
-	"distributed-multisig/logger"
 	"fmt"
 	"log/slog"
+	"math/rand/v2"
 	"sync"
+	"tee-dao/comm"
+	"tee-dao/logger"
 	"time"
 	"unsafe"
 )
@@ -26,7 +27,7 @@ type Participant struct {
 	SecretShares             map[int]*Secp256k1FrostKeygenSecretShare
 	ReadyForPreprocessingNum map[int]int
 	Nonces                   map[int]*Secp256k1FrostNonce
-	NonceCommitments         map[int][]Secp256k1FrostNonceCommitment
+	NonceCommitments         map[int]map[int]Secp256k1FrostNonceCommitment
 	ReadyForSignNum          map[int]map[int]int
 	Keypair                  *Secp256k1FrostKeypair
 	PublicKeys               map[int]Secp256k1FrostPubkey
@@ -51,13 +52,13 @@ func NewParticipant(leader string, config *comm.Config, isLeader bool, id int, n
 	}
 	idNameMapping[config.ID] = config.Name // Include self in the mapping as well
 
-	// Initialize context for graceful shutdown
-	ctx, cancel := context.WithCancel(context.Background())
-
 	commLayer, err := comm.NewCommunicator(config)
 	if err != nil {
 		return nil, err
 	}
+
+	// Initialize context for graceful shutdown
+	ctx, cancel := context.WithCancel(context.Background())
 
 	p := &Participant{
 		Name:                     config.Name,
@@ -73,7 +74,7 @@ func NewParticipant(leader string, config *comm.Config, isLeader bool, id int, n
 		SecretShares:             make(map[int]*Secp256k1FrostKeygenSecretShare),
 		ReadyForPreprocessingNum: make(map[int]int),
 		Nonces:                   make(map[int]*Secp256k1FrostNonce),
-		NonceCommitments:         make(map[int][]Secp256k1FrostNonceCommitment),
+		NonceCommitments:         make(map[int]map[int]Secp256k1FrostNonceCommitment),
 		ReadyForSignNum:          make(map[int]map[int]int),
 		Keypair:                  &Secp256k1FrostKeypair{},
 		PublicKeys:               make(map[int]Secp256k1FrostPubkey),
@@ -169,10 +170,11 @@ func (p *Participant) GetIDByName(name string) (int, bool) {
 func (p *Participant) initiateDKG() {
 	p.logger.Info("Starting DKG...")
 
-	var commitments *Secp256k1FrostVssCommitments
+	commitments := &Secp256k1FrostVssCommitments{}
 	sharesByParticipant := make([]Secp256k1FrostKeygenSecretShare, p.NumParticipants)
 
 	// Call DKG Begin
+	p.logger.With("func", "initiateDKG").Debug("Generating secret key share", "ID", p.ID, "NumParticipants", p.NumParticipants, "MinSigner", p.MinSigner, "shares", sharesByParticipant, "commitments", commitments)
 	result := KeygenDKGBegin(
 		&commitments,              // Each participant's commitment
 		sharesByParticipant,       // Secret shares for each participant
@@ -183,6 +185,7 @@ func (p *Participant) initiateDKG() {
 	)
 	if result != 1 {
 		p.logger.With("func", "initiateDKG").Error("Failed in DKG Begin")
+		return
 	}
 	p.logger.With("func", "initiateDKG").Debug("Secret key share generated", "shares", sharesByParticipant, "commitments", commitments)
 	result = KeygenDKGCommitmentValidate(
@@ -191,6 +194,7 @@ func (p *Participant) initiateDKG() {
 	)
 	if result != 1 {
 		p.logger.With("func", "initiateDKG").Error("Failed in commitment validation")
+		return
 	}
 
 	// Send the generated secret share for other participants
@@ -227,6 +231,8 @@ func (p *Participant) initiateDKG() {
 // completeDKG signals that DKG is complete, setting DKGCompleted flag and sending ReadyForSign
 func (p *Participant) completeDKG() {
 	p.DKGCompleted = true
+	p.ReadyForPreprocessingNum[p.ID]++
+	p.PublicKeys[p.ID] = p.Keypair.PublicKeys
 	p.logger.Info("Completed DKG")
 
 	if p.IsLeader {
@@ -239,8 +245,10 @@ func (p *Participant) completeDKG() {
 	result := PubkeyFromKeypair(&publicKey, p.Keypair)
 	if result != 1 {
 		p.logger.With("func", "completeDKG").Error("Error in creating public key")
+		return
 	}
 
+	p.logger.With("func", "completeDKG").Debug("Generated public key", "public key", publicKey)
 	dkgComplete := &DKGComplete{
 		PublicKey: publicKey,
 		Complete:  true,
@@ -253,13 +261,14 @@ func (p *Participant) completeDKG() {
 
 	readyMsg := comm.Message{
 		MsgType:  ReadyForPreprocessing,
+		Data:     serializedDKGComplete,
 		From:     p.Name,
 		To:       p.CurrentLeader,
-		Data:     serializedDKGComplete,
 		CreateAt: time.Now(),
 	}
 	if err := p.sendMessage(p.CurrentLeader, readyMsg); err != nil {
 		p.logger.With("func", "completeDKG").Error("Failed to send ReadyForPreprocessing to leader", "leader", p.CurrentLeader, "err", err)
+		return
 	}
 }
 
@@ -279,19 +288,22 @@ func (p *Participant) initiatePreprocessing() {
 
 	preprocessingRequestMsg := comm.Message{
 		MsgType:  PreprocessingRequest,
-		From:     p.Name,
 		Data:     serializedPreprocessingRequest,
+		From:     p.Name,
+		To:       "",
 		CreateAt: time.Now(),
 	}
 	if err := p.broadcast(preprocessingRequestMsg); err != nil {
 		p.logger.With("func", "initiatePreprocessing").Error("Failed to broadcast PreprocessingRequest", "err", err)
+		return
 	}
 
 	// Generate nonce and send commitment to all participants
-	var nonce *Secp256k1FrostNonce
+	var nonce = &Secp256k1FrostNonce{}
 	result := CreateNonce(&nonce, p.Keypair)
 	if result != 1 {
 		p.logger.With("func", "initiatePreprocessing").Error("Error in creating nonce in participant")
+		return
 	}
 	p.logger.With("func", "initiatePreprocessing").Debug("Generate nonce and commitment", "Nonce", nonce, "Size", unsafe.Sizeof(*nonce))
 	nonceCommitment := &NonceCommitment{p.Sequence, nonce.Commitments}
@@ -304,17 +316,19 @@ func (p *Participant) initiatePreprocessing() {
 
 	nonceCommitmentMsg := comm.Message{
 		MsgType:  NonceCommitmentExchange,
-		From:     p.Name,
 		Data:     serializedNonceCommitment,
+		From:     p.Name,
+		To:       "",
 		CreateAt: time.Now(),
 	}
 	if err := p.broadcast(nonceCommitmentMsg); err != nil {
 		p.logger.With("func", "initiatePreprocessing").Error("Failed to broadcast nonce commitment", "err", err)
+		return
 	}
 
 	// Store the nonce for future signing
 	p.Nonces[p.Sequence] = nonce
-	p.NonceCommitments[p.Sequence] = make([]Secp256k1FrostNonceCommitment, p.NumParticipants)
+	p.NonceCommitments[p.Sequence] = make(map[int]Secp256k1FrostNonceCommitment)
 	p.NonceCommitments[p.Sequence][p.ID] = nonceCommitment.NonceCommitment
 	p.Sequence++
 }
@@ -325,6 +339,10 @@ func (p *Participant) completePreprocessing(sequence int) {
 	p.logger.Info("Completed preprocessing")
 
 	if p.IsLeader {
+		if p.ReadyForSignNum[sequence] == nil {
+			p.ReadyForSignNum[sequence] = make(map[int]int)
+		}
+		p.ReadyForSignNum[sequence][p.ID]++
 		return
 	}
 
@@ -342,13 +360,14 @@ func (p *Participant) completePreprocessing(sequence int) {
 
 	readyMsg := comm.Message{
 		MsgType:  ReadyForSign,
+		Data:     serializedPreprocessingComplete,
 		From:     p.Name,
 		To:       p.CurrentLeader,
-		Data:     serializedPreprocessingComplete,
 		CreateAt: time.Now(),
 	}
 	if err := p.sendMessage(p.CurrentLeader, readyMsg); err != nil {
 		p.logger.With("func", "completePreprocessing").Error("Failed to send ReadyForSign to leader", "leader", p.CurrentLeader, "err", err)
+		return
 	}
 }
 
@@ -359,11 +378,32 @@ func (p *Participant) initiateSigning(sequence int) {
 	result := TaggedSha256(&msgHash, p.Tag, randomMsg)
 	if result != 1 {
 		p.logger.With("func", "initiateSigning").Error("Error in creating tagged msg hash")
+		return
 	}
 	p.logger.With("func", "initiateSigning").Debug("Initiating signing process")
 
+	// Randomly choose the minimum signers to send the SignRequest
+	signers := []int{p.ID}
+	for i := 0; i < p.MinSigner-1; i++ {
+		for {
+			randomSigner := rand.IntN(p.NumParticipants)
+			contains := false
+			for _, signer := range signers {
+				if signer == randomSigner {
+					contains = true
+					break
+				}
+			}
+			if !contains {
+				signers = append(signers, randomSigner)
+				break
+			}
+		}
+	}
+
 	signMessage := &SignMessage{
 		Sequence: sequence,
+		Signers:  signers,
 		Msg_hash: msgHash,
 	}
 	serializedSignMessage, err := signMessage.Serialize()
@@ -372,16 +412,64 @@ func (p *Participant) initiateSigning(sequence int) {
 		return
 	}
 
-	signRequest := comm.Message{
-		MsgType:  SignRequest,
-		From:     p.Name,
-		Data:     serializedSignMessage,
-		CreateAt: time.Now(),
+	for _, signer := range signers {
+		if signer == p.ID {
+			continue
+		}
+		signerName := p.IDNameMap[signer]
+		signRequest := comm.Message{
+			MsgType:  SignRequest,
+			Data:     serializedSignMessage,
+			From:     p.Name,
+			To:       signerName,
+			CreateAt: time.Now(),
+		}
+		if err := p.sendMessage(signerName, signRequest); err != nil {
+			p.logger.With("func", "initiateSigning").Error("Failed to send SignRequest", "to", signerName, "err", err)
+			return
+		}
 	}
-	if err := p.broadcast(signRequest); err != nil {
-		p.logger.With("func", "initiateSigning").Error("Failed to broadcast SignRequest", "err", err)
+	p.logger.Info("Sent SignRequest to singers", "signers", signers)
+
+	var nonceCommitment []Secp256k1FrostNonceCommitment
+	if p.NonceCommitments[sequence] == nil {
+		p.logger.With("func", "initiateSigning").Error("Nonce commitment not found for sequence", "sequence", sequence)
+		return
 	}
-	p.logger.Info("Sent SignRequest to all participants")
+	for i := 0; i < p.MinSigner; i++ {
+		signerID := signers[i]
+		if commitment, exist := p.NonceCommitments[sequence][signerID]; exist {
+			nonceCommitment = append(nonceCommitment, commitment)
+			if len(nonceCommitment) == len(p.NonceCommitments[sequence]) {
+				break
+			}
+		} else {
+			p.logger.With("func", "initiateSigning").Error("Nonce commitment not found for signer", "signer", signerID)
+			return
+		}
+	}
+
+	// Generate and send the signature share
+	p.logger.With("func", "handleSignRequest").Debug("Generating signature share", "msgHash", signMessage.Msg_hash, "MinSigner", p.MinSigner, "key pair", p.Keypair, "nonces", p.Nonces[signMessage.Sequence], "nonce commitment", nonceCommitment)
+	var signatureShare Secp256k1FrostSignatureShare
+	result = Sign(
+		&signatureShare,
+		msgHash[:],
+		uint32(p.MinSigner),
+		p.Keypair,
+		p.Nonces[sequence],
+		nonceCommitment,
+	)
+
+	if result != 1 {
+		p.logger.With("func", "initiateSigning").Error("Error in signing message")
+		return
+	}
+	p.logger.With("func", "initiateSigning").Debug("Generated signature share", "signature share", signatureShare)
+	if p.SignatureShares[sequence] == nil {
+		p.SignatureShares[sequence] = make(map[int]*Secp256k1FrostSignatureShare)
+	}
+	p.SignatureShares[sequence][p.ID] = &signatureShare
 }
 
 // handleDKGSecretShare handles the DKG secret share message by verifying and storing the share.
@@ -395,11 +483,11 @@ func (p *Participant) handleDKGSecretShare(msg comm.Message) {
 		return
 	}
 
-	p.logger.With("func", "handleDKGSecretShare").Debug("Got DKG Secret share", "share", shareWithCommitment.SecretShare, "commitment", shareWithCommitment.Commitment)
+	p.logger.With("func", "handleDKGSecretShare").Debug("Got DKG Secret share", "share", shareWithCommitment.SecretShare, "commitments", shareWithCommitment.Commitments)
 
 	// Verify and store the share and commitment
 	result := KeygenDKGCommitmentValidate(
-		&shareWithCommitment.Commitment, // Peer’s commitment
+		&shareWithCommitment.Commitments, // Peer’s commitment
 		p.Context,
 	)
 	if result != 1 {
@@ -414,29 +502,33 @@ func (p *Participant) handleDKGSecretShare(msg comm.Message) {
 	}
 	p.logger.With("func", "handleDKGSecretShare").Debug("Stored DKG secret share with commitment", "from", msg.From)
 	p.SecretShares[senderID] = &shareWithCommitment.SecretShare
-	p.Commitments[senderID] = shareWithCommitment.Commitment
+	p.Commitments[senderID] = shareWithCommitment.Commitments
 
 	// Check if received enough secret shares to finalize DKG
-	if len(p.SecretShares) >= p.NumParticipants {
+	if len(p.SecretShares) == p.NumParticipants {
 		// Convert the secret shares and commitments map to slices
 		sharesByParticipant := make([]Secp256k1FrostKeygenSecretShare, p.NumParticipants)
 		for i := 0; i < p.NumParticipants; i++ {
 			sharesByParticipant[i] = *p.SecretShares[i]
+			p.logger.With("func", "handleDKGSecretShare").Debug("Shares", "index", i, "sharesByParticipant", sharesByParticipant[i])
 		}
-		commitmentPointers := make([]*Secp256k1FrostVssCommitments, p.NumParticipants)
+		commitmentsPointers := make([]*Secp256k1FrostVssCommitments, p.NumParticipants)
 		for i := 0; i < p.NumParticipants; i++ {
-			commitmentPointers[i] = p.Commitments[i]
+			commitmentsPointers[i] = p.Commitments[i]
+			p.logger.With("func", "handleDKGSecretShare").Debug("Commitments", "index", i, "commitments", commitmentsPointers[i])
 		}
 
+		p.logger.With("func", "handleDKGSecretShare").Debug("Finalizing DKG", "shares", sharesByParticipant, "commitments", commitmentsPointers, "ID", p.ID, "NumParticipants", p.NumParticipants)
 		result = KeygenDKGFinalize(
 			p.Keypair,
 			uint32(p.ID+1),
 			uint32(p.NumParticipants),
 			sharesByParticipant,
-			commitmentPointers,
+			commitmentsPointers,
 		)
 		if result != 1 {
 			p.logger.With("func", "handleDKGSecretShare").Error("Error in DKG Finalize")
+			return
 		}
 		p.logger.With("func", "handleDKGSecretShare").Debug("Finalized DKG", "keypair", p.Keypair)
 		p.completeDKG()
@@ -470,12 +562,13 @@ func (p *Participant) handleReadyForPreprocessing(msg comm.Message) {
 		return
 	}
 
+	p.logger.With("func", "handleReadyForPreprocessing").Debug("Store public key", "from", msg.From, "public key", dkgComplete.PublicKey)
 	p.ReadyForPreprocessingNum[senderID]++
 	p.PublicKeys[senderID] = dkgComplete.PublicKey
 
 	// Check if enough participants have sent ReadyForPreprocessing
 	// TODO: In demo, we are assuming all participants have sent nonce commitments. Actually, only the minimum signers are needed but all the signer should have a consensus on the same set.
-	if len(p.ReadyForPreprocessingNum) >= p.NumParticipants && p.DKGCompleted {
+	if len(p.ReadyForPreprocessingNum) == p.NumParticipants && p.DKGCompleted {
 		p.logger.Info("All participants are ready. Leader initiating preprocessing process.")
 		p.initiatePreprocessing()
 	}
@@ -515,7 +608,7 @@ func (p *Participant) handleReadyForSign(msg comm.Message) {
 
 	// Check if enough participants have sent ReadyForSign
 	// TODO: In demo, we are assuming all participants have sent nonce commitments. Actually, only the minimum signers are needed but all the signer should have a consensus on the same set.
-	if len(p.NonceCommitments[preprocessingComplete.Sequence]) == p.NumParticipants && p.PreprocessingComplete {
+	if len(p.ReadyForSignNum[preprocessingComplete.Sequence]) == p.NumParticipants && p.PreprocessingComplete {
 		p.logger.Info("All participants are ready. Leader initiating signing process.")
 		p.initiateSigning(preprocessingComplete.Sequence)
 	}
@@ -533,10 +626,11 @@ func (p *Participant) handlePreprocessingRequest(msg comm.Message) {
 	}
 
 	// Generate nonce and send commitment to all participants
-	var nonce *Secp256k1FrostNonce
+	var nonce = &Secp256k1FrostNonce{}
 	result := CreateNonce(&nonce, p.Keypair)
 	if result != 1 {
 		p.logger.With("func", "handlePreprocessingRequest").Error("Error in creating nonce")
+		return
 	}
 	p.logger.With("func", "handlePreprocessingRequest").Debug("Generate nonce and commitment", "Nonce", nonce, "Size", unsafe.Sizeof(*nonce))
 	nonceCommitment := &NonceCommitment{preprocessingRequest.Sequence, nonce.Commitments}
@@ -549,18 +643,20 @@ func (p *Participant) handlePreprocessingRequest(msg comm.Message) {
 
 	nonceCommitmentMsg := comm.Message{
 		MsgType:  NonceCommitmentExchange,
-		From:     p.Name,
 		Data:     serializedNonceCommitment,
+		From:     p.Name,
+		To:       "",
 		CreateAt: time.Now(),
 	}
 	if err := p.broadcast(nonceCommitmentMsg); err != nil {
 		p.logger.With("func", "handlePreprocessingRequest").Error("Failed to broadcast nonce commitment", "err", err)
+		return
 	}
 
 	// Store the nonce for future signing
 	p.Nonces[preprocessingRequest.Sequence] = nonce
 	if p.NonceCommitments[preprocessingRequest.Sequence] == nil {
-		p.NonceCommitments[preprocessingRequest.Sequence] = make([]Secp256k1FrostNonceCommitment, p.NumParticipants)
+		p.NonceCommitments[preprocessingRequest.Sequence] = make(map[int]Secp256k1FrostNonceCommitment)
 	}
 	p.NonceCommitments[preprocessingRequest.Sequence][p.ID] = nonceCommitment.NonceCommitment
 	p.logger.With("func", "handlePreprocessingRequest").Debug("Stored nonce commitment", "from", msg.From, "sequence", preprocessingRequest.Sequence)
@@ -584,13 +680,16 @@ func (p *Participant) handleNonceCommitmentExchange(msg comm.Message) {
 	}
 
 	// Store the NonceCommitment for future signing
+	if p.NonceCommitments[nonceCommitment.Sequence] == nil {
+		p.NonceCommitments[nonceCommitment.Sequence] = make(map[int]Secp256k1FrostNonceCommitment)
+	}
 	p.NonceCommitments[nonceCommitment.Sequence][senderID] = nonceCommitment.NonceCommitment
-	p.logger.With("func", "handleNonceCommitmentExchange").Debug("Stored nonce commitment", "from", msg.From, "sequence", nonceCommitment.Sequence)
+	p.logger.With("func", "handleNonceCommitmentExchange").Debug("Stored nonce commitment", "from", msg.From, "sequence", nonceCommitment.Sequence, "commitment", nonceCommitment.NonceCommitment)
 
 	// Check if received enough nonces to start signing
 	// TODO: In demo, we are assuming all participants have sent nonce commitments. Actually, only the minimum signers are needed but all the signer should have a consensus on the same set.
-	if len(p.NonceCommitments[nonceCommitment.Sequence]) >= p.NumParticipants {
-		p.logger.Info("All participants are ready. Leader initiating signing process.")
+	if len(p.NonceCommitments[nonceCommitment.Sequence]) == p.NumParticipants {
+		p.logger.Info("Received enough nonces. Completed preprocessing.")
 		p.completePreprocessing(nonceCommitment.Sequence)
 	}
 }
@@ -606,7 +705,26 @@ func (p *Participant) handleSignRequest(msg comm.Message) {
 		return
 	}
 
+	var nonceCommitment []Secp256k1FrostNonceCommitment
+	if p.NonceCommitments[signMessage.Sequence] == nil {
+		p.logger.With("func", "handleSignRequest").Error("Nonce commitment not found for sequence", "sequence", signMessage.Sequence)
+		return
+	}
+	for i := 0; i < p.MinSigner; i++ {
+		signerID := signMessage.Signers[i]
+		if commitment, exist := p.NonceCommitments[signMessage.Sequence][signerID]; exist {
+			nonceCommitment = append(nonceCommitment, commitment)
+			if len(nonceCommitment) == len(p.NonceCommitments[signMessage.Sequence]) {
+				break
+			}
+		} else {
+			p.logger.With("func", "handleSignRequest").Error("Nonce commitment not found for signer", "signer", signerID)
+			return
+		}
+	}
+
 	// Generate and send the signature share
+	p.logger.With("func", "handleSignRequest").Debug("Generating signature share", "msgHash", signMessage.Msg_hash, "MinSigner", p.MinSigner, "key pair", p.Keypair, "nonces", p.Nonces[signMessage.Sequence], "nonce commitment", nonceCommitment)
 	var signatureShare Secp256k1FrostSignatureShare
 	result := Sign(
 		&signatureShare,
@@ -614,13 +732,14 @@ func (p *Participant) handleSignRequest(msg comm.Message) {
 		uint32(p.MinSigner),
 		p.Keypair,
 		p.Nonces[signMessage.Sequence],
-		p.NonceCommitments[signMessage.Sequence],
+		nonceCommitment,
 	)
 
 	if result != 1 {
 		p.logger.With("func", "handleSignRequest").Error("Error in signing message")
+		return
 	}
-	p.logger.With("func", "handleSignRequest").Debug("Generated signature share", "signature share", signatureShare)
+	p.logger.With("func", "handleSignRequest").Debug("Generated signature share", "msgHash", signMessage.Msg_hash, "signature share", signatureShare)
 
 	share := &SignatureShare{signMessage.Sequence, signMessage.Msg_hash, signatureShare}
 	serializedShare, err := share.Serialize()
@@ -638,6 +757,7 @@ func (p *Participant) handleSignRequest(msg comm.Message) {
 	}
 	if err := p.sendMessage(msg.From, responseMsg); err != nil {
 		p.logger.With("func", "handleSignRequest").Error("Failed to send signature share", "to", msg.From, "err", err)
+		return
 	}
 	p.logger.With("func", "handleSignRequest").Debug("Sent signature share", "to", msg.From)
 }
@@ -657,7 +777,10 @@ func (p *Participant) handleSignatureShareResponse(msg comm.Message) {
 		p.logger.With("func", "handleSignatureShareResponse").Error("Received signature share, but not the leader.")
 		return
 	}
-
+	if aggregateSig, exist := p.AggregatedSig[receivedSignatureShare.Sequence]; exist && aggregateSig != nil {
+		p.logger.With("func", "handleSignatureShareResponse").Debug("Received more signature shares than required. Ignore the message", "received", len(p.SignatureShares[receivedSignatureShare.Sequence]), "required", p.MinSigner)
+		return
+	}
 	// If leader, aggregate the signature shares
 	senderID, exist := p.GetIDByName(msg.From)
 	if !exist {
@@ -669,7 +792,7 @@ func (p *Participant) handleSignatureShareResponse(msg comm.Message) {
 	}
 	p.SignatureShares[receivedSignatureShare.Sequence][senderID] = &receivedSignatureShare.SignatureShare
 	if len(p.SignatureShares[receivedSignatureShare.Sequence]) < p.MinSigner {
-		p.logger.With("func", "handleSignatureShareResponse").Debug("Received signature shares and signature shares are required. Waiting for the remaining", "received", len(p.SignatureShares[receivedSignatureShare.Sequence]), "required", p.MinSigner)
+		p.logger.With("func", "handleSignatureShareResponse").Debug("Received signature shares and more signature shares are required. Waiting for the remaining", "received", len(p.SignatureShares[receivedSignatureShare.Sequence]), "required", p.MinSigner)
 		return
 	}
 
@@ -677,18 +800,34 @@ func (p *Participant) handleSignatureShareResponse(msg comm.Message) {
 	var signatureShares []Secp256k1FrostSignatureShare
 	var nonceCommitments []Secp256k1FrostNonceCommitment
 	var publicKeys []Secp256k1FrostPubkey // Group public key (to be derived)
-	for id, signatureShare := range p.SignatureShares[receivedSignatureShare.Sequence] {
-		signatureShares = append(signatureShares, *signatureShare)
-		nonceCommitments = append(nonceCommitments, p.NonceCommitments[receivedSignatureShare.Sequence][id])
-		p.logger.With("func", "handleSignatureShareResponse").Debug("Added nonce commitment from participant", "from", id)
-		publicKeys = append(publicKeys, p.PublicKeys[id])
+	for i := 0; i < p.NumParticipants; i++ {
+		if signatureShare, exist := p.SignatureShares[receivedSignatureShare.Sequence][i]; exist {
+			signatureShares = append(signatureShares, *signatureShare)
+			p.logger.With("func", "handleSignatureShareResponse").Debug("Added signature share", "from", i)
+			nonceCommitments = append(nonceCommitments, p.NonceCommitments[receivedSignatureShare.Sequence][i])
+			p.logger.With("func", "handleSignatureShareResponse").Debug("Added nonce commitment", "from", i)
+			publicKeys = append(publicKeys, p.PublicKeys[i])
+			if len(signatureShares) == p.MinSigner {
+				break
+			}
+		}
 	}
 
 	var aggregateSignature [64]byte
+	p.logger.With("func", "handleSignatureShareResponse").Debug("Aggregating signature", "msg hash", receivedSignatureShare.Msg_hash, "signature shares", signatureShares, "nonce commitments", nonceCommitments, "public keys", publicKeys)
 	result := Aggregate(aggregateSignature[:], receivedSignatureShare.Msg_hash[:], p.Keypair, publicKeys, nonceCommitments, signatureShares, uint32(p.MinSigner))
 	if result != 1 {
 		p.logger.With("func", "handleSignatureShareResponse").Error("Error in aggregating signature")
+		return
 	}
 	p.logger.With("func", "handleSignatureShareResponse").Debug("Aggregated signature", "signature", aggregateSignature)
 
+	result = Verify(aggregateSignature[:], receivedSignatureShare.Msg_hash[:], &p.Keypair.PublicKeys)
+	if result == 1 {
+		p.logger.With("func", "handleSignatureShareResponse").Debug("Signature verified successfully!")
+	} else {
+		p.logger.With("func", "handleSignatureShareResponse").Debug("Signature verification failed")
+	}
+
+	p.AggregatedSig[p.Sequence] = aggregateSignature[:]
 }

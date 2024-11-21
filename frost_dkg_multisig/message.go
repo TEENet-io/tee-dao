@@ -2,9 +2,9 @@ package frost_dkg_multisig
 
 import (
 	"bytes"
-	"distributed-multisig/comm"
 	"encoding/gob"
 	"fmt"
+	"tee-dao/comm"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 // SecretShareWithCommitment Struct
 type SecretShareWithCommitment struct {
 	SecretShare Secp256k1FrostKeygenSecretShare
-	Commitment  *Secp256k1FrostVssCommitments
+	Commitments *Secp256k1FrostVssCommitments
 }
 
 func (s *SecretShareWithCommitment) Serialize() ([]byte, error) {
@@ -39,7 +39,7 @@ func (s *SecretShareWithCommitment) Deserialize(data []byte) error {
 }
 
 func (s *SecretShareWithCommitment) String() string {
-	return fmt.Sprintf("SecretShareWithCommitment{SecretShare: %v, Commitment: %v}", s.SecretShare, s.Commitment)
+	return fmt.Sprintf("SecretShareWithCommitment{SecretShare: %v, Commitments: %v, Coefficient: %+v}", s.SecretShare, s.Commitments, s.Commitments.CoefficientCommitments)
 }
 
 // DKGComplete Struct
@@ -136,6 +136,7 @@ func (d *PreprocessingComplete) Deserialize(data []byte) error {
 // SignMessage Struct
 type SignMessage struct {
 	Sequence int
+	Signers  []int
 	Msg_hash [32]byte
 }
 

@@ -1,9 +1,6 @@
 package main
 
 import (
-	"distributed-multisig/comm"
-	"distributed-multisig/frost_dkg_multisig"
-	"distributed-multisig/utils"
 	"flag"
 	"fmt"
 	"log"
@@ -11,6 +8,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"tee-dao/comm"
+	"tee-dao/frost_dkg_multisig"
+	"tee-dao/utils"
 )
 
 func main() {

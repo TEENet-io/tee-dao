@@ -3,6 +3,7 @@
 #define FROST_DKG_LINK_H
 
 #include <stdint.h>
+#include <stdlib.h>
 #include <../secp256k1-frost/include/secp256k1.h>
 #include <../secp256k1-frost/include/secp256k1_frost.h>
 

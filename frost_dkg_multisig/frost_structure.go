@@ -2,7 +2,6 @@ package frost_dkg_multisig
 
 /*
 #include <stdint.h>
-#include <stdlib.h> // Include stdlib for malloc and free
 
 typedef struct {
     uint32_t generator_index;
@@ -69,7 +68,7 @@ type Secp256k1FrostVssCommitment struct {
 type Secp256k1FrostVssCommitments struct {
 	Index                  uint32
 	NumCoefficients        uint32
-	CoefficientCommitments *Secp256k1FrostVssCommitment // pointer to secp256k1_frost_vss_commitment in C
+	CoefficientCommitments []Secp256k1FrostVssCommitment // pointer to secp256k1_frost_vss_commitment in C
 	ZkpR                   [64]byte
 	ZkpZ                   [32]byte
 }
