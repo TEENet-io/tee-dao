@@ -14,16 +14,16 @@ while getopts ":n:" opt; do
 done
 
 if [ -z "$NAME" ]; then
-    echo "Name is required"
+    echo "Name is required. Use -n to specify"
     exit 1
 fi
 
 CA_KEY="${NAME}-ca.key"
 CA_CERT="${NAME}-ca.crt"
 
-SERVER_KEY="${NAME}-server.key"
-SERVER_CSR="${NAME}-server.csr"
-SERVER_CERT="${NAME}-server.crt"
+SERVER_KEY="${NAME}.key"
+SERVER_CSR="${NAME}.csr"
+SERVER_CERT="${NAME}.crt"
 
 DAYS=3650
 SUB="/C=SO/ST=Earth/L=Mountain/O=TEENet/OU=DEV/CN=localhost"

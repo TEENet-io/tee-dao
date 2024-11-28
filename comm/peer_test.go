@@ -90,7 +90,7 @@ func TestPeer(t *testing.T) {
 	}
 
 	srv := NewServer(ctx, srvCfg, srvHandleConn)
-	go srv.Listen()
+	go srv.ListenTLS()
 
 	time.Sleep(1 * time.Second)
 

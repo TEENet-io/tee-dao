@@ -26,7 +26,7 @@ func TestServerWhenClientCloseConn(t *testing.T) {
 	dialers := cfgs[1:]
 
 	server := NewServer(context.Background(), srv, handleConn1)
-	go server.Listen()
+	go server.ListenTLS()
 
 	time.Sleep(1 * time.Second)
 
@@ -54,7 +54,7 @@ func TestServerWhenServerCloseConn(t *testing.T) {
 	dialers := cfgs[1:]
 
 	server := NewServer(context.Background(), srv, handleConn2)
-	go server.Listen()
+	go server.ListenTLS()
 
 	time.Sleep(1 * time.Second)
 

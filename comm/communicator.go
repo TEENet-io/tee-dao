@@ -99,6 +99,10 @@ func (c *Communicator) RegisterHandler(msgName string, msgType MessageType, hand
 	RegisterMessageType(msgType, msgName)
 }
 
+func (c *Communicator) RegisterRPCService(service interface{}) error {
+	return c.srv.RegisterRPC(service)
+}
+
 func (c *Communicator) Close() {
 	defer c.logger.Info("Stopped communicator")
 
@@ -137,7 +141,13 @@ func (c *Communicator) Start() error {
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
-		c.srv.Listen()
+		c.srv.ListenTLS()
+	}()
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.srv.ListenRPC()
 	}()
 
 	// connect to all peers

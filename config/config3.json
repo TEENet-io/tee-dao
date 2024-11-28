@@ -1,8 +1,0 @@
-{
-    "id": 3,
-    "name": "node3",
-    "address": "localhost:5004",
-    "cert": "config/data/node3-server.crt",
-    "key": "config/data/node3-server.key",
-    "CACert": "config/data/node3-ca.crt"
-}

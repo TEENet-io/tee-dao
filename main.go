@@ -17,7 +17,7 @@ func main() {
 	id := flag.Int("id", 0, "ID of the participant")
 	flag.Parse()
 	// Step 1: Load Configurations
-	leaderName, numParticipants, minSigner, allParticipants, err := utils.LoadGeneralConfig("config/config.json")
+	leaderName, numParticipants, minSigner, allParticipants, allClients, err := utils.LoadGeneralConfig("config/config.json")
 	if err != nil {
 		log.Fatalf("Error loading general config: %v", err)
 	}
@@ -33,6 +33,7 @@ func main() {
 		}
 	}
 	nodeConfig.Peers = peers
+	nodeConfig.Clients = allClients
 
 	// Step 2: Role Assignment (Leader or Participant)
 	isLeader := nodeConfig.Name == leaderName

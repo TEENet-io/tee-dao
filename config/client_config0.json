@@ -1,0 +1,8 @@
+{
+    "id": 3,
+    "name": "client0",
+    "address": "localhost:5004",
+    "cert": "config/data/client0.crt",
+    "key": "config/data/client0.key",
+    "CACert": "config/data/client0-ca.crt"
+}

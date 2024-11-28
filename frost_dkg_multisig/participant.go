@@ -14,34 +14,37 @@ import (
 
 // Participant struct holds fields for DKG and signing and uses Communicator as the communication layer.
 type Participant struct {
-	Name                     string
-	ID                       int
-	NumParticipants          int
-	MinSigner                int
-	IDNameMap                map[int]string
-	Config                   *comm.Config
-	Communicator             *comm.Communicator // Communication layer
-	Context                  []byte
-	Tag                      []byte
-	Commitments              map[int]*Secp256k1FrostVssCommitments
-	SecretShares             map[int]*Secp256k1FrostKeygenSecretShare
-	ReadyForPreprocessingNum map[int]int
-	Nonces                   map[int]*Secp256k1FrostNonce
-	NonceCommitments         map[int]map[int]Secp256k1FrostNonceCommitment
-	ReadyForSignNum          map[int]map[int]int
-	Keypair                  *Secp256k1FrostKeypair
-	PublicKeys               map[int]Secp256k1FrostPubkey
-	SignatureShares          map[int]map[int]*Secp256k1FrostSignatureShare
-	AggregatedSig            map[int][]byte
-	CurrentLeader            string
-	IsLeader                 bool           // Whether this participant is the leader
-	Sequence                 int            // Sequence number for the message
-	DKGCompleted             bool           // Flag to indicate if DKG is complete
-	PreprocessingComplete    bool           // Flag to indicate if preprocessing is complete
-	wg                       sync.WaitGroup // New WaitGroup for message loop
-	ctx                      context.Context
-	cancel                   context.CancelFunc
-	logger                   *slog.Logger
+	Name                      string
+	ID                        int
+	NumParticipants           int
+	MinSigner                 int
+	IDNameMap                 map[int]string
+	Config                    *comm.Config
+	Communicator              *comm.Communicator // Communication layer
+	Context                   []byte
+	Tag                       []byte
+	Commitments               map[int]*Secp256k1FrostVssCommitments
+	SecretShares              map[int]*Secp256k1FrostKeygenSecretShare
+	Sequence                  int // Sequence number for the message signature
+	SigningMessage            map[int][]byte
+	ReadyForPreprocessingNum  map[int]int
+	Nonces                    map[int]*Secp256k1FrostNonce
+	NonceCommitments          map[int]map[int]Secp256k1FrostNonceCommitment
+	ReadyForSignNum           map[int]map[int]int
+	Keypair                   *Secp256k1FrostKeypair
+	PublicKeys                map[int]Secp256k1FrostPubkey
+	SignatureShares           map[int]map[int]*Secp256k1FrostSignatureShare
+	AggregatedSig             map[int][]byte
+	SignatureChan             chan []byte
+	CurrentLeader             string
+	IsLeader                  bool // Whether this participant is the leader
+	DKGCompleted              bool // Flag to indicate if DKG is complete
+	ReadyForInitPreprocessing bool
+	PreprocessingComplete     bool           // Flag to indicate if preprocessing is complete
+	wg                        sync.WaitGroup // New WaitGroup for message loop
+	ctx                       context.Context
+	cancel                    context.CancelFunc
+	logger                    *slog.Logger
 }
 
 // NewParticipant initializes a new participant with communicator.
@@ -61,34 +64,37 @@ func NewParticipant(leader string, config *comm.Config, isLeader bool, id int, n
 	ctx, cancel := context.WithCancel(context.Background())
 
 	p := &Participant{
-		Name:                     config.Name,
-		ID:                       id,
-		NumParticipants:          numParticipants,
-		MinSigner:                minSigner,
-		IDNameMap:                idNameMapping,
-		Config:                   config,
-		Communicator:             commLayer,
-		Context:                  signContext,
-		Tag:                      tag,
-		Commitments:              make(map[int]*Secp256k1FrostVssCommitments),
-		SecretShares:             make(map[int]*Secp256k1FrostKeygenSecretShare),
-		ReadyForPreprocessingNum: make(map[int]int),
-		Nonces:                   make(map[int]*Secp256k1FrostNonce),
-		NonceCommitments:         make(map[int]map[int]Secp256k1FrostNonceCommitment),
-		ReadyForSignNum:          make(map[int]map[int]int),
-		Keypair:                  &Secp256k1FrostKeypair{},
-		PublicKeys:               make(map[int]Secp256k1FrostPubkey),
-		SignatureShares:          make(map[int]map[int]*Secp256k1FrostSignatureShare),
-		AggregatedSig:            make(map[int][]byte),
-		CurrentLeader:            leader,
-		IsLeader:                 isLeader,
-		Sequence:                 0,
-		DKGCompleted:             false,
-		PreprocessingComplete:    false,
-		wg:                       sync.WaitGroup{},
-		ctx:                      ctx,
-		cancel:                   cancel,
-		logger:                   logger.New(slog.LevelInfo).With("participant", config.Name),
+		Name:                      config.Name,
+		ID:                        id,
+		NumParticipants:           numParticipants,
+		MinSigner:                 minSigner,
+		IDNameMap:                 idNameMapping,
+		Config:                    config,
+		Communicator:              commLayer,
+		Context:                   signContext,
+		Tag:                       tag,
+		Commitments:               make(map[int]*Secp256k1FrostVssCommitments),
+		SecretShares:              make(map[int]*Secp256k1FrostKeygenSecretShare),
+		Sequence:                  0,
+		SigningMessage:            make(map[int][]byte),
+		ReadyForPreprocessingNum:  make(map[int]int),
+		Nonces:                    make(map[int]*Secp256k1FrostNonce),
+		NonceCommitments:          make(map[int]map[int]Secp256k1FrostNonceCommitment),
+		ReadyForSignNum:           make(map[int]map[int]int),
+		Keypair:                   &Secp256k1FrostKeypair{},
+		PublicKeys:                make(map[int]Secp256k1FrostPubkey),
+		SignatureShares:           make(map[int]map[int]*Secp256k1FrostSignatureShare),
+		AggregatedSig:             make(map[int][]byte),
+		SignatureChan:             make(chan []byte),
+		CurrentLeader:             leader,
+		IsLeader:                  isLeader,
+		DKGCompleted:              false,
+		ReadyForInitPreprocessing: false,
+		PreprocessingComplete:     false,
+		wg:                        sync.WaitGroup{},
+		ctx:                       ctx,
+		cancel:                    cancel,
+		logger:                    logger.New(slog.LevelInfo).With("participant", config.Name),
 	}
 
 	// Register custom message handlers
@@ -99,6 +105,13 @@ func NewParticipant(leader string, config *comm.Config, isLeader bool, id int, n
 	p.Communicator.RegisterHandler("ReadyForSign", ReadyForSign, p.handleReadyForSign)
 	p.Communicator.RegisterHandler("SignRequest", SignRequest, p.handleSignRequest)
 	p.Communicator.RegisterHandler("SignatureShareResponse", SignatureShareResponse, p.handleSignatureShareResponse)
+
+	// Register the RPC services for client requests
+	rpcService := &SignatureService{participant: p}
+	err = p.Communicator.RegisterRPCService(rpcService)
+	if err != nil {
+		return nil, err
+	}
 
 	return p, nil
 }
@@ -273,7 +286,7 @@ func (p *Participant) completeDKG() {
 }
 
 // initiatePreprocessing generate the nonce and sends commitment to all participants
-func (p *Participant) initiatePreprocessing() {
+func (p *Participant) initiatePreprocessing(message []byte) {
 	p.logger.Info("Initiating preprocessing process")
 
 	// Send PreprocessingRequest to all participants
@@ -330,6 +343,7 @@ func (p *Participant) initiatePreprocessing() {
 	p.Nonces[p.Sequence] = nonce
 	p.NonceCommitments[p.Sequence] = make(map[int]Secp256k1FrostNonceCommitment)
 	p.NonceCommitments[p.Sequence][p.ID] = nonceCommitment.NonceCommitment
+	p.SigningMessage[p.Sequence] = message
 	p.Sequence++
 }
 
@@ -373,9 +387,13 @@ func (p *Participant) completePreprocessing(sequence int) {
 
 // initiateSigning generates a random message and sends SignRequest to all participants
 func (p *Participant) initiateSigning(sequence int) {
-	randomMsg := []byte("Random message for signing") // Generate a real random message in production
+	msg, exist := p.SigningMessage[sequence]
+	if !exist {
+		p.logger.With("func", "initiateSigning").Error("Message not found for sequence", "sequence", sequence)
+		return
+	}
 	var msgHash [32]byte
-	result := TaggedSha256(&msgHash, p.Tag, randomMsg)
+	result := TaggedSha256(&msgHash, p.Tag, msg)
 	if result != 1 {
 		p.logger.With("func", "initiateSigning").Error("Error in creating tagged msg hash")
 		return
@@ -569,8 +587,8 @@ func (p *Participant) handleReadyForPreprocessing(msg comm.Message) {
 	// Check if enough participants have sent ReadyForPreprocessing
 	// TODO: In demo, we are assuming all participants have sent nonce commitments. Actually, only the minimum signers are needed but all the signer should have a consensus on the same set.
 	if len(p.ReadyForPreprocessingNum) == p.NumParticipants && p.DKGCompleted {
-		p.logger.Info("All participants are ready. Leader initiating preprocessing process.")
-		p.initiatePreprocessing()
+		p.logger.Info("All participants are ready. Waiting for client signing request.")
+		p.ReadyForInitPreprocessing = true
 	}
 }
 
@@ -830,4 +848,5 @@ func (p *Participant) handleSignatureShareResponse(msg comm.Message) {
 	}
 
 	p.AggregatedSig[p.Sequence] = aggregateSignature[:]
+	p.SignatureChan <- aggregateSignature[:]
 }

@@ -14,8 +14,8 @@ func prepareTest(dir string, ports []string) []*Config {
 	for i, port := range ports {
 		addresses = append(addresses, "localhost:"+port)
 		names = append(names, "node"+fmt.Sprintf("%d", i))
-		certFiles = append(certFiles, filepath.Join(dir, "node"+fmt.Sprintf("%d", i)+"-server.crt"))
-		keyFiles = append(keyFiles, filepath.Join(dir, "node"+fmt.Sprintf("%d", i)+"-server.key"))
+		certFiles = append(certFiles, filepath.Join(dir, "node"+fmt.Sprintf("%d", i)+".crt"))
+		keyFiles = append(keyFiles, filepath.Join(dir, "node"+fmt.Sprintf("%d", i)+".key"))
 		CACertFiles = append(CACertFiles, filepath.Join(dir, "node"+fmt.Sprintf("%d", i)+"-ca.crt"))
 	}
 

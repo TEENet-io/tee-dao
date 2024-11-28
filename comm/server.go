@@ -7,6 +7,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"net/rpc"
 	"os"
 	"sync"
 
@@ -19,6 +20,8 @@ type Server struct {
 
 	listener   net.Listener
 	handleConn func(context.Context, net.Conn)
+
+	rpcListener net.Listener
 
 	logger *slog.Logger
 	wg     sync.WaitGroup
@@ -44,10 +47,14 @@ func (srv *Server) Close() {
 		srv.listener.Close()
 	}
 
+	if srv.rpcListener != nil {
+		srv.rpcListener.Close()
+	}
+
 	srv.wg.Wait()
 }
 
-func (srv *Server) Listen() {
+func (srv *Server) ListenTLS() {
 	srv.logger.Info("Starting TLS server")
 
 	srv.logger.Debug("Loading server key pair",
@@ -103,4 +110,67 @@ func (srv *Server) Listen() {
 			srv.handleConn(srv.ctx, conn)
 		}()
 	}
+}
+
+func (srv *Server) ListenRPC() {
+	srv.logger.Info("Starting RPC server")
+
+	srv.logger.With("func", "ListenRPC").Debug("Loading server key pair",
+		slog.String("cert", srv.cfg.Cert), slog.String("key", srv.cfg.Key))
+	serverCert, err := tls.LoadX509KeyPair(srv.cfg.Cert, srv.cfg.Key)
+	if err != nil {
+		srv.logger.Error("Failed to load server certificate", slog.String("err", err.Error()))
+		return
+	}
+
+	caCertPool := x509.NewCertPool()
+	for _, client := range srv.cfg.Clients {
+		srv.logger.With("func", "ListenRPC").Debug("Loading CA cert", slog.String("ca", client.CACert))
+		caCert, err := os.ReadFile(client.CACert)
+		if err != nil {
+			srv.logger.With("func", "ListenRPC").Error("Failed to read CA certifcate", slog.String("err", err.Error()))
+			return
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		ClientCAs:    caCertPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+	}
+
+	rpcListener, err := tls.Listen("tcp", srv.cfg.RPCAddress, tlsConfig)
+	if err != nil {
+		srv.logger.With("func", "ListenRPC").Error("Failed to start RPC server", slog.String("err", err.Error()))
+		return
+	}
+
+	srv.rpcListener = rpcListener
+
+	// loop stops after srv.rpcListener is explicitly closed by srv.Close()
+	for {
+		conn, err := srv.rpcListener.Accept()
+		if err != nil {
+			if errors.Is(err, net.ErrClosed) {
+				return
+			}
+			srv.logger.With("err", err).Debug("rpcListener.Accept")
+			continue
+		}
+
+		srv.logger.With("func", "ListenRPC").Debug("RPC Client connected", slog.String("from", conn.RemoteAddr().String()))
+
+		// routine to wait for client to disconnect and then close the connection
+		srv.wg.Add(1)
+		go func() {
+			defer srv.wg.Done()
+			rpc.ServeConn(conn)
+		}()
+	}
+}
+
+// RegisterRPC registers an RPC service.
+func (srv *Server) RegisterRPC(service interface{}) error {
+	return rpc.Register(service)
 }

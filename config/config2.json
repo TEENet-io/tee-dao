@@ -2,7 +2,8 @@
     "id": 2,
     "name": "node2",
     "address": "localhost:5003",
-    "cert": "config/data/node2-server.crt",
-    "key": "config/data/node2-server.key",
+    "rpcAddress": "localhost:6003",
+    "cert": "config/data/node2.crt",
+    "key": "config/data/node2.key",
     "CACert": "config/data/node2-ca.crt"
 }

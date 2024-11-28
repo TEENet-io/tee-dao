@@ -10,35 +10,36 @@ import (
 
 // GeneralConfig holds the structure for loading config.json
 type GeneralConfig struct {
-	Leader       string            `json:"leader"`
-	Threshold    int               `json:"threshold"`
-	Participants []comm.PeerConfig `json:"participants"`
+	Leader       string              `json:"leader"`
+	Threshold    int                 `json:"threshold"`
+	Participants []comm.PeerConfig   `json:"participants"`
+	Clients      []comm.ClientConfig `json:"clients"`
 }
 
 // LoadGeneralConfig reads the general configuration file and returns the leader's name, participant count, minimum signer count, and peers list.
-func LoadGeneralConfig(filePath string) (string, int, int, []comm.PeerConfig, error) {
+func LoadGeneralConfig(filePath string) (string, int, int, []comm.PeerConfig, []comm.ClientConfig, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		return "", 0, 0, nil, fmt.Errorf("failed to open config file: %v", err)
+		return "", 0, 0, nil, nil, fmt.Errorf("failed to open config file: %v", err)
 	}
 	defer file.Close()
 
 	data, err := ioutil.ReadAll(file)
 	if err != nil {
-		return "", 0, 0, nil, fmt.Errorf("failed to read config file: %v", err)
+		return "", 0, 0, nil, nil, fmt.Errorf("failed to read config file: %v", err)
 	}
 
 	var generalConfig GeneralConfig
 	err = json.Unmarshal(data, &generalConfig)
 	if err != nil {
-		return "", 0, 0, nil, fmt.Errorf("failed to parse config JSON: %v", err)
+		return "", 0, 0, nil, nil, fmt.Errorf("failed to parse config JSON: %v", err)
 	}
 
 	leader := generalConfig.Leader
 	minSignerCount := generalConfig.Threshold
 	numParticipants := len(generalConfig.Participants)
 
-	return leader, numParticipants, minSignerCount, generalConfig.Participants, nil
+	return leader, numParticipants, minSignerCount, generalConfig.Participants, generalConfig.Clients, nil
 }
 
 // LoadNodeConfig loads a node-specific configuration file and returns a Config struct.
