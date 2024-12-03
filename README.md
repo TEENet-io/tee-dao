@@ -13,18 +13,22 @@ git clone https://github.com/TEENet-io/tee-dao
 cd tee-dao
 git submodule update --init --recursive
 
-# Generate the key with cert with script/gen-self-signed-cert.sh
+# Generate the key with cert
 mkdir config/data
 cd config/data
+../../script/gen-self-signed-cert.sh -n coordinator
 ../../script/gen-self-signed-cert.sh -n node0
 ../../script/gen-self-signed-cert.sh -n node1
 ../../script/gen-self-signed-cert.sh -n node2
 ../../script/gen-self-signed-cert.sh -n client0
 
-# start 3 demo nodes with script/run_nodes.sh
+# Start a coordinator
+go run coordinator/cmd/main.go 
+
+# Start 3 demo nodes
 ./script/run_nodes.sh
 
-# start a client for signature request
+# Start a client for signature request
 go run client/main.go -uid 0
 ```
 
