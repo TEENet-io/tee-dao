@@ -70,7 +70,7 @@ func (srv *Server) ListenTLS() {
 		srv.logger.Debug("Loading CA cert", slog.String("ca", peer.CACert))
 		caCert, err := os.ReadFile(peer.CACert)
 		if err != nil {
-			srv.logger.Error("Failed to read CA certifcate", slog.String("err", err.Error()))
+			srv.logger.Error("Failed to read CA certificate", slog.String("err", err.Error()))
 			return
 		}
 		caCertPool.AppendCertsFromPEM(caCert)
@@ -124,11 +124,11 @@ func (srv *Server) ListenRPC() {
 	}
 
 	caCertPool := x509.NewCertPool()
-	for _, client := range srv.cfg.Clients {
-		srv.logger.With("func", "ListenRPC").Debug("Loading CA cert", slog.String("ca", client.CACert))
-		caCert, err := os.ReadFile(client.CACert)
+	for _, CACert := range srv.cfg.ClientsCACert {
+		srv.logger.With("func", "ListenRPC").Debug("Loading CA cert", slog.String("ca", CACert))
+		caCert, err := os.ReadFile(CACert)
 		if err != nil {
-			srv.logger.With("func", "ListenRPC").Error("Failed to read CA certifcate", slog.String("err", err.Error()))
+			srv.logger.With("func", "ListenRPC").Error("Failed to read CA certificate", slog.String("err", err.Error()))
 			return
 		}
 		caCertPool.AppendCertsFromPEM(caCert)

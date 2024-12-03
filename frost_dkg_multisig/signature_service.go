@@ -16,12 +16,12 @@ type PubKeyReply struct {
 }
 
 func (s *SignatureService) GetPubKey(args *GetPubKeyArgs, reply *PubKeyReply) error {
-	if !s.participant.DKGCompleted {
+	if !s.participant.dkgCompleted {
 		reply.Success = false
 		return fmt.Errorf("DKG not completed")
 	}
 	reply.Success = true
-	reply.GroupPublicKey = s.participant.Keypair.PublicKeys.GroupPublicKey
+	reply.GroupPublicKey = s.participant.keypair.PublicKeys.GroupPublicKey
 	return nil
 }
 
@@ -35,7 +35,7 @@ type SignatureReply struct {
 }
 
 func (s *SignatureService) Sign(args *SignArgs, reply *SignatureReply) error {
-	if !s.participant.ReadyForInitPreprocessing {
+	if !s.participant.readyForInitPreprocessing {
 		reply.Success = false
 		return fmt.Errorf("participant is not ready for signing")
 	}
@@ -47,8 +47,8 @@ func (s *SignatureService) Sign(args *SignArgs, reply *SignatureReply) error {
 		select {
 		case <-s.participant.ctx.Done():
 			reply.Success = false
-			return fmt.Errorf("context cancelled")
-		case signature := <-s.participant.SignatureChan:
+			return fmt.Errorf("server closed")
+		case signature := <-s.participant.signatureChan:
 			if len(signature) != 64 {
 				return fmt.Errorf("signature size mismatch: %d bytes", len(signature))
 			}

@@ -1,42 +1,109 @@
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"flag"
 	"fmt"
 	"log"
+	"net/rpc"
 	"os"
 	"os/signal"
 	"sync"
 	"syscall"
 	"tee-dao/comm"
+	"tee-dao/coordinator"
 	"tee-dao/frost_dkg_multisig"
 	"tee-dao/utils"
 )
 
-func main() {
-	id := flag.Int("id", 0, "ID of the participant")
-	flag.Parse()
-	// Step 1: Load Configurations
-	leaderName, numParticipants, minSigner, allParticipants, allClients, err := utils.LoadGeneralConfig("config/config.json")
+// Request the general configuration from the coordinator
+func requestConfig(nodeConfig *frost_dkg_multisig.NodeConfig) (*coordinator.ConfigReply, error) {
+	// Load node certificate and key
+	cert, err := tls.LoadX509KeyPair(nodeConfig.Cert, nodeConfig.Key)
 	if err != nil {
-		log.Fatalf("Error loading general config: %v", err)
+		fmt.Printf("failed to load client certificate and key: %v", err)
+		return nil, err
 	}
 
-	nodeConfig, err := utils.LoadNodeConfig(fmt.Sprintf("config/config%d.json", *id))
+	// Load CA certificate
+	caCertPool := x509.NewCertPool()
+	fmt.Printf("Loading CA cert: %s", nodeConfig.CoordinatorCACert)
+	caCert, err := os.ReadFile(nodeConfig.CoordinatorCACert)
+	if err != nil {
+		fmt.Printf("Failed to read CA certificate. err: %v", err)
+		return nil, err
+	}
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	// Create a TLS configuration
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+	}
+
+	// Connect to the RPC server with TLS
+	client, err := tls.Dial("tcp", nodeConfig.CoordinatorAddress, tlsConfig)
+	if err != nil {
+		fmt.Printf("Error connecting to RPC server: %v", err)
+		return nil, err
+	}
+	defer client.Close()
+
+	// Create an RPC client
+	rpcClient := rpc.NewClient(client)
+
+	// Call the GetConfig RPC method
+	args := &coordinator.GetConfigArgs{ParticipantConfig: *nodeConfig}
+	var reply coordinator.ConfigReply
+	if err := rpcClient.Call("ConfigService.GetConfig", args, &reply); err != nil {
+		fmt.Printf("Failed to call GetConfig RPC method: %v", err)
+		return nil, err
+	}
+
+	// Print the received configuration
+	fmt.Printf("Received configuration: %v", reply)
+	return &reply, nil
+}
+
+func main() {
+	name := flag.String("n", "node0", "Name of the participant")
+	flag.Parse()
+	// Step 1: Load Configurations
+	nodeConfig, err := utils.LoadNodeConfig(fmt.Sprintf("config/config_%s.json", *name))
 	if err != nil {
 		log.Fatalf("Error loading node config: %v", err)
 	}
+
+	// Step 2: Request the general configuration from the coordinator
+	configReply, err := requestConfig(nodeConfig)
+	if err != nil {
+		log.Fatalf("Error requesting configuration: %v", err)
+	}
+	allParticipantConfigs := configReply.ParticipantConfigs
+	var ID int
 	var peers []comm.PeerConfig
-	for _, participant := range allParticipants {
-		if participant.ID != *id {
-			peers = append(peers, participant)
+	for id, participantConfig := range allParticipantConfigs {
+		if participantConfig.Name != nodeConfig.Name {
+			peers = append(peers, comm.PeerConfig{ID: id, Name: participantConfig.Name, Address: participantConfig.Address, RPCAddress: participantConfig.RPCAddress, CACert: participantConfig.CACert})
+		} else {
+			ID = id
 		}
 	}
-	nodeConfig.Peers = peers
-	nodeConfig.Clients = allClients
+	config := comm.Config{
+		ID:            ID,
+		Name:          nodeConfig.Name,
+		Address:       nodeConfig.Address,
+		RPCAddress:    nodeConfig.RPCAddress,
+		Cert:          nodeConfig.Cert,
+		Key:           nodeConfig.Key,
+		CACert:        nodeConfig.CACert,
+		Peers:         peers,
+		ClientsCACert: nodeConfig.ClientsCACert,
+	}
 
-	// Step 2: Role Assignment (Leader or Participant)
-	isLeader := nodeConfig.Name == leaderName
+	// Role Assignment (Leader or Participant)
+	isLeader := *name == configReply.Leader
 	log.Printf("Node %s initialized as %s\n", nodeConfig.Name, func() string {
 		if isLeader {
 			return "Leader"
@@ -48,7 +115,7 @@ func main() {
 	// Initialize context and tag
 	context := []byte("example_context") // For DKG
 	tag := []byte("message_tag")         // For Signature
-	participant, err := frost_dkg_multisig.NewParticipant(leaderName, nodeConfig, isLeader, *id, numParticipants, minSigner, context, tag)
+	participant, err := frost_dkg_multisig.NewParticipant(configReply.Leader, &config, isLeader, ID, len(allParticipantConfigs), configReply.Threshold, context, tag)
 	if err != nil {
 		log.Fatalf("Error creating participant: %v", err)
 	}

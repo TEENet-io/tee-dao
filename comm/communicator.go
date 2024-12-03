@@ -85,6 +85,8 @@ func NewCommunicator(
 		logger:      logger.New(logLvl).With("communicator", cfg.Name),
 	}
 
+	comm.srv = NewServer(ctx, cfg, comm.handleConn)
+
 	// Register base message handlers
 	comm.RegisterHandler("Ping", MsgTypePing, comm.handlePing)
 
@@ -137,7 +139,6 @@ func (c *Communicator) Start() error {
 	c.logger.Info("Starting communicator")
 
 	// start the server
-	c.srv = NewServer(c.ctx, c.cfg, c.handleConn)
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()

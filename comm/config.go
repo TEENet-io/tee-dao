@@ -22,7 +22,8 @@ type Config struct {
 
 	Peers []PeerConfig
 
-	Clients []ClientConfig
+	// path to the CA certificate used to authenticate the client during TLS handshake
+	ClientsCACert []string
 }
 
 type PeerConfig struct {
@@ -39,16 +40,5 @@ type PeerConfig struct {
 	RPCAddress string
 
 	// path to the CA certificate used to authenticate the peer during TLS handshake
-	CACert string
-}
-
-type ClientConfig struct {
-	// client id in multisig
-	UserID int
-
-	// name given to the client
-	Name string
-
-	// path to the CA certificate used to authenticate the client during TLS handshake
 	CACert string
 }

@@ -1,9 +1,0 @@
-{
-    "id": 1,
-    "name": "node1",
-    "address": "localhost:5002",
-    "rpcAddress": "localhost:6002",
-    "cert": "config/data/node1.crt",
-    "key": "config/data/node1.key",
-    "CACert": "config/data/node1-ca.crt"
-}
