@@ -13,6 +13,12 @@ git clone https://github.com/TEENet-io/tee-dao
 cd tee-dao
 git submodule update --init --recursive
 
+# Build the crypto library
+cd secp126k1-frost
+mkdir build && cd build
+cmake -DSECP256K1_ENABLE_MODULE_FROST=ON -DSECP256K1_EXPERIMENTAL=ON -DSECP256K1_BUILD_EXAMPLES=ON .. 
+make
+
 # Generate the key with cert
 mkdir config/data
 cd config/data
