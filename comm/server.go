@@ -7,11 +7,13 @@ import (
 	"errors"
 	"log/slog"
 	"net"
-	"net/rpc"
 	"os"
 	"sync"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 
 	"tee-dao/logger"
+	pb "tee-dao/rpc"
 )
 
 type Server struct {
@@ -25,19 +27,58 @@ type Server struct {
 
 	logger *slog.Logger
 	wg     sync.WaitGroup
+	grpcServer *grpc.Server
 }
 
 func NewServer(
 	ctx context.Context,
 	cfg *Config,
 	handleConn func(context.Context, net.Conn),
-) *Server {
+) (*Server, error) {
+	// init logger
+	serverLogger := logger.New(logLvl).With("server", cfg.Name)
+
+	serverLogger.Info("init gRPC server")
+	serverLogger.With("func", "ListenRPC").Debug("Loading server key pair",
+		slog.String("cert", cfg.Cert), slog.String("key", cfg.Key))
+
+	// Load server certificate and private key
+	serverCert, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key)
+	if err != nil {
+		serverLogger.With("func", "NewServer").Error("Failed to load server certificate", slog.String("err", err.Error()))
+		return nil, err
+	}
+
+	// Create a pool of CA certificates
+	caCertPool := x509.NewCertPool()
+	for _, CaCert := range cfg.ClientsCaCert {
+		serverLogger.With("func", "ListenRPC").Debug("Loading CA cert", slog.String("ca", CaCert))
+		caCert, err := os.ReadFile(CaCert)
+		if err != nil {
+			serverLogger.With("func", "ListenRPC").Error("Failed to read CA certificate", slog.String("err", err.Error()))
+			return nil, err
+		}
+		caCertPool.AppendCertsFromPEM(caCert)
+	}
+
+	// Configure TLS for gRPC
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{serverCert},
+		ClientCAs:    caCertPool,
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+	}
+
+	// Create gRPC server options with TLS credentials
+	grpcCreds := credentials.NewTLS(tlsConfig)
+	grpcServer := grpc.NewServer(grpc.Creds(grpcCreds))
+
 	return &Server{
 		ctx:        ctx,
 		cfg:        cfg,
 		handleConn: handleConn,
-		logger:     logger.New(logLvl).With("server", cfg.Name),
-	}
+		logger:     serverLogger,
+		grpcServer:	grpcServer,
+	}, nil
 }
 
 func (srv *Server) Close() {
@@ -67,8 +108,8 @@ func (srv *Server) ListenTLS() {
 
 	caCertPool := x509.NewCertPool()
 	for _, peer := range srv.cfg.Peers {
-		srv.logger.Debug("Loading CA cert", slog.String("ca", peer.CACert))
-		caCert, err := os.ReadFile(peer.CACert)
+		srv.logger.Debug("Loading CA cert", slog.String("ca", peer.CaCert))
+		caCert, err := os.ReadFile(peer.CaCert)
 		if err != nil {
 			srv.logger.Error("Failed to read CA certificate", slog.String("err", err.Error()))
 			return
@@ -112,65 +153,42 @@ func (srv *Server) ListenTLS() {
 	}
 }
 
-func (srv *Server) ListenRPC() {
+func (srv *Server) ListenRPC() error {
 	srv.logger.Info("Starting RPC server")
 
-	srv.logger.With("func", "ListenRPC").Debug("Loading server key pair",
-		slog.String("cert", srv.cfg.Cert), slog.String("key", srv.cfg.Key))
-	serverCert, err := tls.LoadX509KeyPair(srv.cfg.Cert, srv.cfg.Key)
+	// Start the listener
+	rpcListener, err := net.Listen("tcp", srv.cfg.RpcAddress)
 	if err != nil {
-		srv.logger.Error("Failed to load server certificate", slog.String("err", err.Error()))
-		return
+		srv.logger.With("func", "ListenRPC").Error("Failed to start gRPC server", slog.String("err", err.Error()))
+		return err
 	}
 
-	caCertPool := x509.NewCertPool()
-	for _, CACert := range srv.cfg.ClientsCACert {
-		srv.logger.With("func", "ListenRPC").Debug("Loading CA cert", slog.String("ca", CACert))
-		caCert, err := os.ReadFile(CACert)
-		if err != nil {
-			srv.logger.With("func", "ListenRPC").Error("Failed to read CA certificate", slog.String("err", err.Error()))
-			return
+	srv.logger.Info("gRPC server is listening", slog.String("address", srv.cfg.RpcAddress))
+
+	// Serve gRPC requests
+	if err := srv.grpcServer.Serve(rpcListener); err != nil {
+		if errors.Is(err, net.ErrClosed) {
+			srv.logger.Info("gRPC server shut down")
+			return err
 		}
-		caCertPool.AppendCertsFromPEM(caCert)
+		srv.logger.With("func", "ListenRPC").Error("gRPC server encountered an error", slog.String("err", err.Error()))
 	}
 
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientCAs:    caCertPool,
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-	}
-
-	rpcListener, err := tls.Listen("tcp", srv.cfg.RPCAddress, tlsConfig)
-	if err != nil {
-		srv.logger.With("func", "ListenRPC").Error("Failed to start RPC server", slog.String("err", err.Error()))
-		return
-	}
-
-	srv.rpcListener = rpcListener
-
-	// loop stops after srv.rpcListener is explicitly closed by srv.Close()
-	for {
-		conn, err := srv.rpcListener.Accept()
-		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
-				return
-			}
-			srv.logger.With("err", err).Debug("rpcListener.Accept")
-			continue
-		}
-
-		srv.logger.With("func", "ListenRPC").Debug("RPC Client connected", slog.String("from", conn.RemoteAddr().String()))
-
-		// routine to wait for client to disconnect and then close the connection
-		srv.wg.Add(1)
-		go func() {
-			defer srv.wg.Done()
-			rpc.ServeConn(conn)
-		}()
-	}
+	return nil
 }
 
 // RegisterRPC registers an RPC service.
 func (srv *Server) RegisterRPC(service interface{}) error {
-	return rpc.Register(service)
+	// Register the service with the gRPC server
+	switch s := service.(type) {
+	case pb.SignatureServer:
+		pb.RegisterSignatureServer(srv.grpcServer, s)
+	case pb.ConfigServer:
+		pb.RegisterConfigServer(srv.grpcServer, s)
+	default:
+		srv.logger.With("service", service).Error("unknown service type")
+		return errors.New("unknown service type")
+	}
+
+	return nil
 }

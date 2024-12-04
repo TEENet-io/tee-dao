@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"tee-dao/logger"
+	pb "tee-dao/rpc"
 )
 
 var (
@@ -51,20 +52,27 @@ type Communicator struct {
 func NewCommunicator(
 	cfg *Config,
 ) (*Communicator, error) {
+	// init logger
+	commLogger := logger.New(logLvl).With("communicator", cfg.Name);
+
+	// create a map of peer info
 	peerInfo := make(map[string]*PeerConfig)
 	for _, peer := range cfg.Peers {
 		peerInfo[peer.Name] = &peer
 	}
 
+	// Load client certificate and private key
 	cert, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key)
 	if err != nil {
+		commLogger.With("func", "NewCommunicator").Error("failed to load client certificate", slog.String("err", err.Error()))
 		return nil, err
 	}
 
 	peerCACerts := make(map[string][]byte)
 	for _, peer := range cfg.Peers {
-		peerCACert, err := os.ReadFile(peer.CACert)
+		peerCACert, err := os.ReadFile(peer.CaCert)
 		if err != nil {
+			commLogger.With("func", "NewCommunicator").Error("failed to read peer CA certificate", slog.String("err", err.Error()))
 			return nil, err
 		}
 		peerCACerts[peer.Name] = peerCACert
@@ -82,10 +90,14 @@ func NewCommunicator(
 		peers:       make(map[string]*Peer),
 		handlers:    make(map[MessageType]MessageHandler),
 		msgCh:       make(chan []byte, MsgChanSize),
-		logger:      logger.New(logLvl).With("communicator", cfg.Name),
+		logger:      commLogger,
 	}
 
-	comm.srv = NewServer(ctx, cfg, comm.handleConn)
+	comm.srv, err = NewServer(ctx, cfg, comm.handleConn)
+	if err != nil {
+		commLogger.With("func", "NewCommunicator").Error("failed to create server", slog.String("err", err.Error()))
+		return nil, err
+	}
 
 	// Register base message handlers
 	comm.RegisterHandler("Ping", MsgTypePing, comm.handlePing)
@@ -101,8 +113,9 @@ func (c *Communicator) RegisterHandler(msgName string, msgType MessageType, hand
 	RegisterMessageType(msgType, msgName)
 }
 
-func (c *Communicator) RegisterRPCService(service interface{}) error {
-	return c.srv.RegisterRPC(service)
+func (c *Communicator) RegisterRPCService(service pb.SignatureServer) error {
+	c.srv.RegisterRPC(service)
+	return nil
 }
 
 func (c *Communicator) Close() {

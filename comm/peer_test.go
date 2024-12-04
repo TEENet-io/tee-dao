@@ -130,7 +130,7 @@ func TestPeer(t *testing.T) {
 
 	dial(
 		ctx,
-		clientCfg.Cert, clientCfg.Key, srvCfg.CACert, srvCfg.Address,
+		clientCfg.Cert, clientCfg.Key, srvCfg.CaCert, srvCfg.Address,
 		clientHandleConn, &wg,
 	)
 

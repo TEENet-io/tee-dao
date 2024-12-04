@@ -2,10 +2,10 @@
     "address": "localhost:4001",
     "cert": "config/data/coordinator.crt",
     "key": "config/data/coordinator.key",
-    "CACert": "config/data/coordinator-ca.crt",
+    "caCert": "config/data/coordinator-ca.crt",
     "threshold": 2,
     "nodesNum": 3,
-    "nodesCACert": [
+    "nodesCaCert": [
         "config/data/node0-ca.crt",
         "config/data/node1-ca.crt",
         "config/data/node2-ca.crt"

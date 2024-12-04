@@ -11,19 +11,19 @@ type Config struct {
 	Address string
 
 	// IP address, in the form of host:port, given the RPC server run by the node
-	RPCAddress string
+	RpcAddress string
 
 	// paths to the TLS certificate and key used to run a TLS server
 	Cert string
 	Key  string
 
 	// path to the CA certificate used to generate the above certificates
-	CACert string
+	CaCert string
 
 	Peers []PeerConfig
 
 	// path to the CA certificate used to authenticate the client during TLS handshake
-	ClientsCACert []string
+	ClientsCaCert []string
 }
 
 type PeerConfig struct {
@@ -37,8 +37,8 @@ type PeerConfig struct {
 	Address string // host:port
 
 	// IP address, in the form of host:port, given the RPC server run by the peer
-	RPCAddress string
+	RpcAddress string
 
 	// path to the CA certificate used to authenticate the peer during TLS handshake
-	CACert string
+	CaCert string
 }

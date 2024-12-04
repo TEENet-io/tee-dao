@@ -4,10 +4,10 @@
     "rpcAddress": "localhost:6002",
     "cert": "config/data/node1.crt",
     "key": "config/data/node1.key",
-    "CACert": "config/data/node1-ca.crt",
-    "CoordinatorAddress": "localhost:4001",
-    "CoordinatorCACert": "config/data/coordinator-ca.crt",
-    "ClientsCACert": [
+    "caCert": "config/data/node1-ca.crt",
+    "coordinatorAddress": "localhost:4001",
+    "coordinatorCaCert": "config/data/coordinator-ca.crt",
+    "clientsCaCert": [
         "config/data/client0-ca.crt"
     ]
 }

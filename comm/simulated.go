@@ -26,7 +26,7 @@ func prepareTest(dir string, ports []string) []*Config {
 			Address: addresses[i],
 			Cert:    certFiles[i],
 			Key:     keyFiles[i],
-			CACert:  CACertFiles[i],
+			CaCert:  CACertFiles[i],
 		}
 		cfg.Peers = []PeerConfig{}
 		for j := 0; j < len(ports); j++ {
@@ -36,7 +36,7 @@ func prepareTest(dir string, ports []string) []*Config {
 			cfg.Peers = append(cfg.Peers, PeerConfig{
 				Name:    names[j],
 				Address: addresses[j],
-				CACert:  CACertFiles[j],
+				CaCert:  CACertFiles[j],
 			})
 		}
 		cfgs = append(cfgs, cfg)

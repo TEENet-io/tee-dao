@@ -7,8 +7,8 @@ import (
 	"net"
 	"sync"
 	"tee-dao/comm"
-	"tee-dao/frost_dkg_multisig"
 	"tee-dao/logger"
+	"tee-dao/rpc"
 )
 
 type CoordinatorConfig struct {
@@ -18,8 +18,8 @@ type CoordinatorConfig struct {
 	Cert string
 	// Key is the path to the communication private key file
 	Key string
-	// CACert is the path to the CA certificate file
-	CACert string
+	// CaCert is the path to the CA certificate file
+	CaCert string
 	// Threshold is the threshold for the DKG and multisig
 	Threshold int
 	// NodesNum is the number of nodes
@@ -33,7 +33,7 @@ type Coordinator struct {
 	server             *comm.Server                           // Communication layer
 	Leader             string                                 // Leader name
 	participantID      int                                    // Participant ID to be assigned
-	participantConfigs map[int]*frost_dkg_multisig.NodeConfig // Participant configurations
+	participantConfigs map[int32]*rpc.NodeConfig // Participant configurations
 	configCond         *sync.Cond
 	wg                 sync.WaitGroup // New WaitGroup for message loop
 	ctx                context.Context
@@ -49,7 +49,7 @@ func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
 	coordinator := &Coordinator{
 		config:             config,
 		participantID:      0,
-		participantConfigs: make(map[int]*frost_dkg_multisig.NodeConfig),
+		participantConfigs: make(map[int32]*rpc.NodeConfig),
 		configCond:         sync.NewCond(&sync.Mutex{}),
 		wg:                 sync.WaitGroup{},
 		ctx:                ctx,
@@ -59,14 +59,14 @@ func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
 
 	commConfig := &comm.Config{
 		Name:          "coordinator",
-		RPCAddress:    config.Address,
+		RpcAddress:    config.Address,
 		Cert:          config.Cert,
 		Key:           config.Key,
-		CACert:        config.CACert,
-		ClientsCACert: config.NodesCACert,
+		CaCert:        config.CaCert,
+		ClientsCaCert: config.NodesCACert,
 	}
 
-	coordinator.server = comm.NewServer(ctx, commConfig, func(ctx context.Context, c net.Conn) {
+	coordinator.server, _ = comm.NewServer(ctx, commConfig, func(ctx context.Context, c net.Conn) {
 		// Not implemented
 		panic("not implemented")
 	})
@@ -112,7 +112,7 @@ func (c *Coordinator) Close() error {
 	return nil
 }
 
-func (c *Coordinator) getNodesConfig(participantConfig frost_dkg_multisig.NodeConfig) bool {
+func (c *Coordinator) getNodesConfig(participantConfig *rpc.NodeConfig) bool {
 	// Assume the attestation has been completed at the connection time
 
 	// Validate the participant configuration
@@ -129,7 +129,7 @@ func (c *Coordinator) getNodesConfig(participantConfig frost_dkg_multisig.NodeCo
 	}
 
 	// Store the participant configuration
-	c.participantConfigs[c.participantID] = &participantConfig
+	c.participantConfigs[int32(c.participantID)] = participantConfig
 	c.participantID++
 
 	// Check if all participants' configurations have been received
@@ -137,7 +137,7 @@ func (c *Coordinator) getNodesConfig(participantConfig frost_dkg_multisig.NodeCo
 		// randomly select a leader
 		randLeaderID := rand.IntN(c.config.NodesNum)
 		for id, config := range c.participantConfigs {
-			if id == randLeaderID {
+			if id == int32(randLeaderID) {
 				c.Leader = config.Name
 				break
 			}
