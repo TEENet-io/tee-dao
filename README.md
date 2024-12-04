@@ -38,3 +38,25 @@ go run coordinator/cmd/main.go
 go run client/main.go -uid 0
 ```
 
+## How to use grpc
+
+In repo root, install depandencies:
+
+```bash
+# use proxy if net cannot access google
+# export GOPROXY=https://goproxy.cn,direct
+go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+apt install -y protobuf-compiler
+
+# update PATH for protoc
+export PATH="$PATH:$(go env GOPATH)/bin"
+
+# compile proto files
+protoc --go_out=. --go_opt=paths=source_relative \
+    --go-grpc_out=. --go-grpc_opt=paths=source_relative \
+    rpc/XXXX.proto
+```
+
+More information of how to implement a new service, refer to README in `./rpc/README.md`
+
