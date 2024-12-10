@@ -227,7 +227,7 @@ func (p *Participant) initiateDKG() {
 				return
 			}
 
-			p.logger.Info("Broadcast share with commitment")
+			p.logger.Info("Send share with commitment", "to", p.idNameMap[i])
 			shareWithCommitmentMsg := comm.Message{
 				MsgType:  DKGSecretShare,
 				Data:     serializedShareWithCommitment,
@@ -819,7 +819,7 @@ func (p *Participant) handleSignatureShareResponse(msg comm.Message) {
 		return
 	}
 	if aggregateSig, exist := p.aggregatedSig[receivedSignatureShare.Sequence]; exist && aggregateSig != nil {
-		p.logger.With("func", "handleSignatureShareResponse").Debug("Received more signature shares than required. Ignore the message", "received", len(p.signatureShares[receivedSignatureShare.Sequence]), "required", p.minSigner)
+		p.logger.With("func", "handleSignatureShareResponse").Debug("Already have the signature. Ignore the message", "received", len(p.signatureShares[receivedSignatureShare.Sequence]), "required", p.minSigner)
 		return
 	}
 	// If the participant is the initiator, aggregate the signature shares
@@ -870,6 +870,6 @@ func (p *Participant) handleSignatureShareResponse(msg comm.Message) {
 		p.logger.With("func", "handleSignatureShareResponse").Debug("Signature verification failed")
 	}
 
-	p.aggregatedSig[p.sequence] = aggregateSignature[:]
+	p.aggregatedSig[receivedSignatureShare.Sequence] = aggregateSignature[:]
 	p.signatureChan <- aggregateSignature[:]
 }
