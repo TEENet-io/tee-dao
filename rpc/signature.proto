@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package rpc;
+
+option go_package = "../rpc";
+
+// The signature service definition.
+service Signature {
+  // Sends a get pubkey
+  rpc GetPubKey (GetPubKeyRequest) returns (GetPubKeyReply) {}
+  rpc GetSignature (GetSignatureRequest) returns (GetSignatureReply) {}
+}
+
+// The request message containing the user's id.
+message GetPubKeyRequest {
+  int32 userID = 1;
+}
+
+// The response message containing the the state and the pubkey
+message GetPubKeyReply {
+  bool success = 1;
+  bytes group_public_key = 2;
+}
+
+// The request message containing the message to sign.
+message GetSignatureRequest {
+  bytes msg = 1;  // The message to sign
+}
+
+// The response message containing the signature.
+message GetSignatureReply {
+  bool success = 1;           // Whether the signing operation was successful
+  bytes signature = 2;        // The generated signature (64-byte signature)
+}

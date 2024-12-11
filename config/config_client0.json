@@ -3,7 +3,7 @@
     "name": "client0",
     "cert": "config/data/client0.crt",
     "key": "config/data/client0.key",
-    "CACert": "config/data/client0-ca.crt",
-    "ServerAddress": "localhost:6001",
-    "ServerCACert": "config/data/node0-ca.crt"
+    "caCert": "config/data/client0-ca.crt",
+    "serverAddress": "localhost:6001",
+    "serverCACert": "config/data/node0-ca.crt"
 }

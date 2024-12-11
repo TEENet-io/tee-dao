@@ -8,12 +8,15 @@ import (
 	"errors"
 	"log/slog"
 	"math/rand/v2"
-	"net"
 	"os"
 	"sync"
 	"time"
 
 	"tee-dao/logger"
+	pb "tee-dao/rpc"
+
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 var (
@@ -24,7 +27,7 @@ var (
 	ErrPeerNotFound = errors.New("peer not found")
 )
 
-type MessageHandler func(Message)
+type MessageHandler func(pb.NodeMsg) error
 
 // Communicator is the main struct that handles the communications between nodes
 type Communicator struct {
@@ -42,7 +45,7 @@ type Communicator struct {
 	mu    sync.Mutex
 
 	msgCh    chan []byte
-	handlers map[MessageType]MessageHandler
+	handlers map[uint32]MessageHandler
 
 	logger *slog.Logger
 	wg     sync.WaitGroup
@@ -51,20 +54,27 @@ type Communicator struct {
 func NewCommunicator(
 	cfg *Config,
 ) (*Communicator, error) {
+	// init logger
+	commLogger := logger.New(logLvl).With("communicator", cfg.Name);
+
+	// create a map of peer info
 	peerInfo := make(map[string]*PeerConfig)
 	for _, peer := range cfg.Peers {
 		peerInfo[peer.Name] = &peer
 	}
 
+	// Load client certificate and private key
 	cert, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key)
 	if err != nil {
+		commLogger.With("func", "NewCommunicator").Error("failed to load client certificate", slog.String("err", err.Error()))
 		return nil, err
 	}
 
 	peerCACerts := make(map[string][]byte)
 	for _, peer := range cfg.Peers {
-		peerCACert, err := os.ReadFile(peer.CACert)
+		peerCACert, err := os.ReadFile(peer.CaCert)
 		if err != nil {
+			commLogger.With("func", "NewCommunicator").Error("failed to read peer CA certificate", slog.String("err", err.Error()))
 			return nil, err
 		}
 		peerCACerts[peer.Name] = peerCACert
@@ -80,12 +90,16 @@ func NewCommunicator(
 		peerCACerts: peerCACerts,
 		peerInfo:    peerInfo,
 		peers:       make(map[string]*Peer),
-		handlers:    make(map[MessageType]MessageHandler),
+		handlers:    make(map[uint32]MessageHandler),
 		msgCh:       make(chan []byte, MsgChanSize),
-		logger:      logger.New(logLvl).With("communicator", cfg.Name),
+		logger:      commLogger,
 	}
 
-	comm.srv = NewServer(ctx, cfg, comm.handleConn)
+	comm.srv, err = NewServer(ctx, cfg)
+	if err != nil {
+		commLogger.With("func", "NewCommunicator").Error("failed to create server", slog.String("err", err.Error()))
+		return nil, err
+	}
 
 	// Register base message handlers
 	comm.RegisterHandler("Ping", MsgTypePing, comm.handlePing)
@@ -94,7 +108,7 @@ func NewCommunicator(
 }
 
 // RegisterHandler adds a handler for a specific message type.
-func (c *Communicator) RegisterHandler(msgName string, msgType MessageType, handler MessageHandler) {
+func (c *Communicator) RegisterHandler(msgName string, msgType uint32, handler MessageHandler) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.handlers[msgType] = handler
@@ -102,7 +116,8 @@ func (c *Communicator) RegisterHandler(msgName string, msgType MessageType, hand
 }
 
 func (c *Communicator) RegisterRPCService(service interface{}) error {
-	return c.srv.RegisterRPC(service)
+	c.srv.RegisterRPC(service)
+	return nil
 }
 
 func (c *Communicator) Close() {
@@ -138,13 +153,6 @@ func (c *Communicator) PeerNames() []string {
 func (c *Communicator) Start() error {
 	c.logger.Info("Starting communicator")
 
-	// start the server
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		c.srv.ListenTLS()
-	}()
-
 	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
@@ -152,11 +160,11 @@ func (c *Communicator) Start() error {
 	}()
 
 	// connect to all peers
-	for _, name := range c.PeerNames() {
+	for _, peerName := range c.PeerNames() {
 		c.wg.Add(1)
 		go func() {
 			defer c.wg.Done()
-			c.connect(name)
+			c.connect(c.SelfName(), peerName)
 		}()
 	}
 
@@ -167,13 +175,6 @@ func (c *Communicator) Start() error {
 		c.heartbeatLoop()
 	}()
 
-	// start the message handler loop
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		c.handleMessageLoop()
-	}()
-
 	return nil
 }
 
@@ -182,12 +183,12 @@ func (c *Communicator) SetPeer(peer *Peer) bool {
 	defer c.mu.Unlock()
 	c.mu.Lock()
 
-	if currentPeer, ok := c.peers[peer.name]; ok && currentPeer != nil && peer.nonce < currentPeer.nonce {
-		c.logger.With("func", "SetPeer").Debug("peer connection already exists", slog.String("peer", peer.name))
+	if currentPeer, ok := c.peers[peer.remote]; ok && currentPeer != nil && peer.nonce < currentPeer.nonce {
+		c.logger.With("func", "SetPeer").Debug("peer connection already exists", slog.String("peer", peer.remote))
 		return false
 	}
 
-	c.peers[peer.name] = peer
+	c.peers[peer.remote] = peer
 
 	return true
 }
@@ -232,27 +233,27 @@ func (c *Communicator) heartbeatLoop() {
 		case <-c.ctx.Done():
 			return
 		case <-tickerPing.C:
-			for _, name := range peerNames {
-				peer := c.GetPeer(name)
+			for _, peerName := range peerNames {
+				peer := c.GetPeer(peerName)
 				if peer == nil { // peer does not exist, try to reconnect
 					c.wg.Add(1)
 					go func() {
 						defer c.wg.Done()
-						if err := c.connect(name); err != nil {
-							c.logger.With("func", "hearbeatLoop").Error("failed to connect", slog.String("target", name), slog.String("err", err.Error()))
+						if err := c.connect(c.SelfName(), peerName); err != nil {
+							c.logger.With("func", "hearbeatLoop").Error("failed to connect", slog.String("target", peerName), slog.String("err", err.Error()))
 						}
 					}()
 				} else { // peer exists, ping it
 					if err := peer.Ping(); err != nil { // if fail, remove the peer
-						c.logger.With("func", "hearbeatLoop").Error("failed to ping", slog.String("target", name), slog.String("err", err.Error()))
+						c.logger.With("func", "hearbeatLoop").Error("failed to ping", slog.String("target", peerName), slog.String("err", err.Error()))
 						peer.Close()
-						c.RemovePeer(name)
+						c.RemovePeer(peerName)
 						// try to reconnect
 						c.wg.Add(1)
 						go func() {
 							defer c.wg.Done()
-							if err := c.connect(name); err != nil {
-								c.logger.With("func", "hearbeatLoop").Error("failed to connect", slog.String("target", name), slog.String("err", err.Error()))
+							if err := c.connect(c.SelfName(), peerName); err != nil {
+								c.logger.With("func", "hearbeatLoop").Error("failed to connect", slog.String("target", peerName), slog.String("err", err.Error()))
 							}
 						}()
 					}
@@ -268,167 +269,130 @@ func (c *Communicator) heartbeatLoop() {
 //	if success, sends the name to the peer,
 //	adds the peer to the list of connected peers,
 //	and if success, starts the listener.
-func (c *Communicator) connect(name string) error {
-	conn, err := c.dial(name)
+func (c *Communicator) connect(selfName string, peerName string) error {
+	conn, err := c.dial(peerName)
 	if err != nil {
 		return err
 	}
 
 	nonce := rand.Uint32()
-	peer := NewPeer(c.ctx, name, nonce, conn, c.msgCh)
+	peer := NewPeer(c.ctx, nonce, conn, selfName, peerName, c.msgCh)
 
 	nonceBuf := make([]byte, 4)
 	binary.BigEndian.PutUint32(nonceBuf, peer.nonce) // Use BigEndian or LittleEndian as needed
 
-	// send setup message to the peer
-	mySetupMsg := Message{
-		MsgType:  MsgTypeSetUp,
-		From:     c.cfg.Name,
-		Data:     nonceBuf,
-		CreateAt: time.Now(),
-	}
-	serializedMySetupMsg, err := mySetupMsg.Serialize()
-	if err != nil {
-		c.logger.With("func", "connect").Error("fail to serialize data, closing connection", slog.String("peer", name))
-		peer.Close()
-		return err
-	}
-
-	if err := peer.Write(serializedMySetupMsg); err != nil {
-		c.logger.With("func", "connect").Error("fail to send setup message, closing connection", slog.String("peer", name))
-		peer.Close()
-		return err
-	}
-
 	if !c.SetPeer(peer) {
-		c.logger.With("func", "connect").Debug("failed to set peer, closing connection", slog.String("peer", name))
+		c.logger.With("func", "connect").Debug("failed to set peer, closing connection", slog.String("peer", peerName))
 		peer.Close()
 		return err
 	}
-
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		peer.Listen()
-	}()
 
 	return nil
 }
 
-func (c *Communicator) handleConn(ctx context.Context, conn net.Conn) {
-	peer := NewPeer(ctx, "", 0, conn, c.msgCh)
-
-	// receive setup message from the peer
-	data, err := peer.Read()
-	if err != nil {
-		c.logger.With("func", "handleConn").Error("failed to read peer name, closing connection", slog.String("err", err.Error()))
-		peer.Close()
-		return
-	}
-
-	var peerSetupMsg Message
-	if err := peerSetupMsg.Deserialize(data); err != nil {
-		c.logger.With("func", "handleConn").Error("failed to deserialize data, closing connection", slog.String("err", err.Error()))
-		peer.Close()
-		return
-	}
-
-	peerNonce := binary.BigEndian.Uint32(peerSetupMsg.Data)
-	peer.SetProperty(peerSetupMsg.From, peerNonce)
-
-	// set the peer
-	if !c.SetPeer(peer) {
-		c.logger.With("func", "handleConn").Debug("failed to set peer, closing connection", slog.String("peer", peerSetupMsg.From))
-		conn.Close()
-		return
-	}
-
-	c.wg.Add(1)
-	go func() {
-		defer c.wg.Done()
-		peer.Listen()
-	}()
-}
-
-func (c *Communicator) handleMessageLoop() {
-	c.logger.Info("Starting message handler loop")
-	defer c.logger.Info("Stopped message handler loop")
-
-	for {
-		select {
-		case <-c.ctx.Done():
-			return
-		case msg := <-c.msgCh:
-			c.handleMessage(msg)
-		}
-	}
-}
-
 // handleMessage processes an incoming message by calling the registered handler.
-func (c *Communicator) handleMessage(data []byte) {
-	var msg Message
-	if err := msg.Deserialize(data); err != nil {
-		c.logger.With("func", "handleMessage").Error("Failed to deserialize message", "data", string(data), "err", err)
-		return
-	}
-
+func (c *Communicator) handleMessage(msg pb.NodeMsg) error {
 	c.mu.Lock()
 	handler, exists := c.handlers[msg.MsgType]
 	c.mu.Unlock()
 
 	if exists {
-		handler(msg)
+		return handler(msg)
 	} else {
 		c.logger.With("func", "handleMessage").Debug("Received unknown message type", "type", msg.MsgType)
+		return errors.New("unknown message type")
 	}
 }
 
 // Handler for MsgTypePing
-func (c *Communicator) handlePing(msg Message) {
+func (c *Communicator) handlePing(msg pb.NodeMsg) error {
 	c.logger.With("func", "handlePing").Debug("Received Ping message", "data", string(msg.Data))
+	return nil
 }
 
-func (c *Communicator) dial(peerName string) (net.Conn, error) {
+func (c *Communicator) dial(peerName string) (*grpc.ClientConn, error) {
 	info := c.peerInfo[peerName]
 	if info == nil {
 		return nil, ErrPeerNotFound
 	}
 
-	CACertPool := x509.NewCertPool()
-	CACertPool.AppendCertsFromPEM(c.peerCACerts[peerName])
+	caCertPool := x509.NewCertPool()
+	caCertPool.AppendCertsFromPEM(c.peerCACerts[peerName])
 	tlsConfig := &tls.Config{
-		RootCAs:      CACertPool,
+		RootCAs:      caCertPool,
 		Certificates: []tls.Certificate{*c.clientCert},
 	}
 
-	conn, err := tls.Dial("tcp", info.Address, tlsConfig)
+	// conn, err := tls.Dial("tcp", info.Address, tlsConfig)
+	conn, err := grpc.Dial(info.RpcAddress, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	if err != nil {
 		return nil, err
+		c.logger.With("func", "dial").Error("failed to dial", slog.String("peer", peerName), slog.String("err", err.Error()))
 	}
 
 	return conn, nil
 }
 
-func (c *Communicator) SendMessage(name string, data []byte) error {
+func (c *Communicator) SendMessage(name string, msg *pb.NodeMsg) error {
 	peer := c.GetPeer(name)
 	if peer == nil {
 		return ErrPeerNotFound
 	}
-	if err := peer.Write(data); err != nil {
-		c.logger.With("func", "SendMessage").Error("failed to send message", slog.String("dest", peer.name), slog.String("err", err.Error()))
+
+	// create a client for node communication rpc
+	client := pb.NewNodeCommClient(peer.conn)
+
+	var err error
+
+	for i := 0; i < 3; i++ {
+		// Call RequestHandler with context and message
+		_, err := client.RequestHandler(context.Background(), msg)
+
+		// If got an error, log and retry
+		if err != nil {
+			c.logger.With("func", "SendMessage").Error("resending message", slog.String("dest", name), slog.String("err", err.Error()))
+			time.Sleep(time.Second * 1)
+			continue
+		}
+
+		break
+	}
+
+	if err != nil {
+		c.logger.With("func", "SendMessage").Error("failed to send message", slog.String("dest", name), slog.String("err", err.Error()))
 		return err
 	}
+
 	return nil
 }
 
-func (c *Communicator) Broadcast(data []byte) error {
+func (c *Communicator) Broadcast(msg *pb.NodeMsg) error {
 	for _, name := range c.PeerNames() {
 		peer := c.GetPeer(name)
 		if peer == nil {
 			continue
 		}
-		if err := peer.Write(data); err != nil {
-			c.logger.With("func", "Broadcast").Error("failed to send message", slog.String("dest", peer.name), slog.String("err", err.Error()))
+		// create a client for node communication rpc
+		client := pb.NewNodeCommClient(peer.conn)
+
+		var err error
+
+		for i := 0; i < 3; i++ {
+			// Call RequestHandler with context and message
+			_, err := client.RequestHandler(context.Background(), msg)
+	
+			// If got an error, log and retry
+			if err != nil {
+				c.logger.With("func", "Broadcast").Error("resending message", slog.String("dest", name), slog.String("err", err.Error()))
+				time.Sleep(time.Second * 2)
+				continue
+			}
+	
+			break
+		}
+	
+		if err != nil {
+			c.logger.With("func", "Broadcast").Error("failed to send message", slog.String("dest", name), slog.String("err", err.Error()))
 			return err
 		}
 	}

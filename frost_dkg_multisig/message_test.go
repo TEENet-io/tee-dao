@@ -5,6 +5,7 @@ import (
 	"tee-dao/comm"
 	"testing"
 	"time"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 func TestMessage_Serialization(t *testing.T) {
@@ -13,7 +14,7 @@ func TestMessage_Serialization(t *testing.T) {
 		Data:     []byte("test data"),
 		From:     "Node1",
 		To:       "Node2",
-		CreateAt: time.Now(),
+		CreateAt: timestamppb.Now(),
 	}
 
 	// Test serialization
@@ -180,7 +181,7 @@ func TestStringMethods(t *testing.T) {
 		Data:     []byte("test data"),
 		From:     "Node1",
 		To:       "Node2",
-		CreateAt: time.Now(),
+		CreateAt: timestamppb.Now(),
 	}
 	expected := "type=DKGSectretShare, from=Node1, to=Node2, createdAt="
 	if msg.String()[:len(expected)] != expected {

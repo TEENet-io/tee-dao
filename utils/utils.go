@@ -5,12 +5,13 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"log"
 	"tee-dao/coordinator"
-	"tee-dao/frost_dkg_multisig"
+	pb "tee-dao/rpc"
 )
 
 // LoadNodeConfig loads a node-specific configuration file and returns a Config struct.
-func LoadNodeConfig(filePath string) (*frost_dkg_multisig.NodeConfig, error) {
+func LoadNodeConfig(filePath string) (*pb.NodeConfig, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open node config file: %v", err)
@@ -21,13 +22,15 @@ func LoadNodeConfig(filePath string) (*frost_dkg_multisig.NodeConfig, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read node config file: %v", err)
 	}
+	// log.Printf("Node config data: %v", data)
 
-	var nodeConfig frost_dkg_multisig.NodeConfig
+	var nodeConfig pb.NodeConfig
 	err = json.Unmarshal(data, &nodeConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse node config JSON: %v", err)
 	}
 
+	log.Printf("Node config: %v", nodeConfig)
 	return &nodeConfig, nil
 }
 

@@ -4,12 +4,15 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"context"
+	"log"
 	"flag"
 	"fmt"
 	"io/ioutil"
-	"net/rpc"
 	"os"
-	"tee-dao/frost_dkg_multisig"
+	pb "tee-dao/rpc"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 type MyConfig struct {
@@ -24,7 +27,7 @@ type MyConfig struct {
 	Key  string
 
 	// path to the CA certificate used to authenticate the user during TLS handshake
-	CACert string
+	CaCert string
 
 	// IP address of the remote RPC server, in the form of host:port
 	ServerAddress string
@@ -74,7 +77,7 @@ func main() {
 
 	// Load CA certificate
 	caCertPool := x509.NewCertPool()
-	fmt.Printf("Loading CA cert: %s", clientConfig.ServerCACert)
+	log.Printf("Loading CA cert: %s", clientConfig.ServerCACert)
 	caCert, err := os.ReadFile(clientConfig.ServerCACert)
 	if err != nil {
 		fmt.Printf("Failed to read CA certificate. err: %v", err)
@@ -89,36 +92,34 @@ func main() {
 	}
 
 	// Connect to the RPC server with TLS
-	client, err := tls.Dial("tcp", clientConfig.ServerAddress, tlsConfig)
+	conn, err := grpc.Dial(clientConfig.ServerAddress, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	if err != nil {
 		fmt.Printf("Error connecting to RPC server: %v", err)
 		return
 	}
-	defer client.Close()
+	defer conn.Close()
 
 	// Create an RPC client
-	rpcClient := rpc.NewClient(client)
+	client := pb.NewSignatureClient(conn)
 
-	args := frost_dkg_multisig.GetPubKeyArgs{UserID: clientConfig.UserID}
-	var pubKeyReply frost_dkg_multisig.PubKeyReply
-
-	// Call the GetPubKey method on the server
-	err = rpcClient.Call("SignatureService.GetPubKey", args, &pubKeyReply)
+	// Prepare and make the GetPubKey RPC call
+	getPubKeyRequest := &pb.GetPubKeyRequest{UserID: int32(clientConfig.UserID)}
+	getPubKeyReply, err := client.GetPubKey(context.Background(), getPubKeyRequest)
 	if err != nil {
-		fmt.Printf("Error calling RPC method: %v", err)
-		return
+		log.Fatalf("Error calling GetPubKey: %v", err)
 	}
 
-	fmt.Printf("Group public key: %v\n", pubKeyReply)
+	// Output the group public key
+	fmt.Printf("Success: %v\n", getPubKeyReply.GetSuccess())
+	fmt.Printf("Group Public Key: %x\n", getPubKeyReply.GetGroupPublicKey())
 
-	// Call the Sign method on the server
-	signArgs := frost_dkg_multisig.SignArgs{Msg: []byte("hello")}
-	var signatureReply frost_dkg_multisig.SignatureReply
-	err = rpcClient.Call("SignatureService.Sign", signArgs, &signatureReply)
+	getSignatureRequest := &pb.GetSignatureRequest{Msg: []byte("hello1")}
+	getSignatureReply, err := client.GetSignature(context.Background(), getSignatureRequest)
 	if err != nil {
-		fmt.Printf("Error calling RPC method: %v", err)
-		return
+		log.Fatalf("Error calling GetSignature: %v", err)
 	}
 
-	fmt.Printf("Signature: %v\n", signatureReply)
+	// Output the signature
+	fmt.Printf("Success: %v\n", getSignatureReply.GetSuccess())
+	fmt.Printf("Signature: %x\n", getSignatureReply.GetSignature())
 }

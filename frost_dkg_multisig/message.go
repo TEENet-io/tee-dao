@@ -4,17 +4,16 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"tee-dao/comm"
 )
 
 const (
-	DKGSecretShare          comm.MessageType = 0x05
-	ReadyForPreprocessing   comm.MessageType = 0x06
-	NonceCommitmentExchange comm.MessageType = 0x07
-	PreprocessingRequest    comm.MessageType = 0x08
-	ReadyForSign            comm.MessageType = 0x09
-	SignRequest             comm.MessageType = 0x0a
-	SignatureShareResponse  comm.MessageType = 0x0b
+	DKGSecretShare          uint32 = 0x05
+	ReadyForPreprocessing   uint32 = 0x06
+	NonceCommitmentExchange uint32 = 0x07
+	PreprocessingRequest    uint32 = 0x08
+	ReadyForSign            uint32 = 0x09
+	SignRequest             uint32 = 0x0a
+	SignatureShareResponse  uint32 = 0x0b
 )
 
 // SecretShareWithCommitment Struct
