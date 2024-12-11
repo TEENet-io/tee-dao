@@ -110,7 +110,7 @@ func (srv *Server) ListenRPC() error {
 	srv.logger.Info("Starting RPC server")
 
 	// Start the listener
-  serverAddress := "0.0.0.0:" + strings.Split(srv.cfg.RPCAddress, ":")[1]
+  serverAddress := "0.0.0.0:" + strings.Split(srv.cfg.RpcAddress, ":")[1]
 	rpcListener, err := net.Listen("tcp", serverAddress)
 
 	if err != nil {
