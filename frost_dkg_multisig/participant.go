@@ -873,7 +873,7 @@ func (p *Participant) handleSignatureShareResponse(msg pb.NodeMsg) error {
 	}
 	if aggregateSig, exist := p.aggregatedSig[receivedSignatureShare.Sequence]; exist && aggregateSig != nil {
 		p.logger.With("func", "handleSignatureShareResponse").Debug("Already have the signature. Ignore the message", "received", len(p.signatureShares[receivedSignatureShare.Sequence]), "required", p.minSigner)
-		return
+		return nil
 	}
 	// If the participant is the initiator, aggregate the signature shares
 	senderID, exist := p.GetIDByName(msg.From)
