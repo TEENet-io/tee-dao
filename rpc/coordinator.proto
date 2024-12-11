@@ -1,0 +1,36 @@
+syntax = "proto3";
+
+package rpc;
+
+option go_package = "../rpc";
+
+// The signature service definition.
+service Coordinator {
+  // Sends a get config
+  rpc GetConfig (GetConfigRequest) returns (GetConfigReply) {}
+}
+
+// Node configuration
+message NodeConfig {
+  string name = 1;                       // The name of the node
+  string rpcAddress = 2;                 // RPC server address (host:port)
+  string cert = 3;                       // Path to the TLS certificate
+  string key = 4;                        // Path to the TLS private key
+  string caCert = 5;                     // Path to the CA certificate
+  string coordinatorAddress = 6;         // Remote coordinator server address (host:port)
+  string coordinatorCaCert = 7;          // Path to the CA certificate for the coordinator
+  repeated string clientsCaCert = 8;     // List of paths to the Clients CA certificate files
+}
+
+// Request message for GetConfig RPC
+message GetConfigRequest {
+  NodeConfig participant_config = 1;
+}
+
+// Response message for GetConfig RPC
+message GetConfigReply {
+  bool success = 1;
+  int32 threshold = 2;  // Threshold for DKG and multisig
+  string leader = 3;    // Leader name
+  map<int32, NodeConfig> participant_configs = 4; // Participant configurations
+}

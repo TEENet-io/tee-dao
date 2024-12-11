@@ -12,7 +12,7 @@ import (
 
 func main() {
 	// Step 1: Load Configurations
-	coordinatorConfig, err := utils.LoadCoordinatorConfig("config/coordinator_config.json")
+	coordinatorConfig, err := utils.LoadCoordinatorConfig("config/config_coordinator.json")
 	if err != nil {
 		log.Fatalf("Error loading coordinator config: %v", err)
 	}

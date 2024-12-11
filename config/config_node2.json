@@ -1,6 +1,5 @@
 {
     "name": "node2",
-    "address": "localhost:5003",
     "rpcAddress": "localhost:6003",
     "cert": "config/data/node2.crt",
     "key": "config/data/node2.key",

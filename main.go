@@ -54,7 +54,7 @@ func requestConfig(nodeConfig *pb.NodeConfig) (*pb.GetConfigReply, error) {
 	defer conn.Close()
 
 	// Create a new DKG client
-	client := pb.NewConfigClient(conn)
+	client := pb.NewCoordinatorClient(conn)
 
 	// Prepare and make the GetPubKey RPC call
 	log.Printf("Requesting configuration from coordinator %s\n", nodeConfig.CoordinatorAddress)
@@ -88,7 +88,7 @@ func main() {
 	var peers []comm.PeerConfig
 	for id, participantConfig := range allParticipantConfigs {
 		if participantConfig.Name != nodeConfig.Name {
-			peers = append(peers, comm.PeerConfig{ID: int(id), Name: participantConfig.Name, Address: participantConfig.Address, RpcAddress: participantConfig.RpcAddress, CaCert: participantConfig.CaCert})
+			peers = append(peers, comm.PeerConfig{ID: int(id), Name: participantConfig.Name, RpcAddress: participantConfig.RpcAddress, CaCert: participantConfig.CaCert})
 		} else {
 			ID = int(id)
 		}
@@ -96,7 +96,6 @@ func main() {
 	config := comm.Config{
 		ID:            ID,
 		Name:          nodeConfig.Name,
-		Address:       nodeConfig.Address,
 		RpcAddress:    nodeConfig.RpcAddress,
 		Cert:          nodeConfig.Cert,
 		Key:           nodeConfig.Key,

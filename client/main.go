@@ -22,9 +22,6 @@ type MyConfig struct {
 	// name given to the user
 	Name string
 
-	// IP address, in the form of host:port
-	Address string
-
 	// path to the TLS certificate and key used to run a TLS client
 	Cert string
 	Key  string

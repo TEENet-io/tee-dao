@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"math/rand/v2"
-	"net"
 	"sync"
 	"tee-dao/comm"
 	"tee-dao/logger"
@@ -66,13 +65,10 @@ func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
 		ClientsCaCert: config.NodesCACert,
 	}
 
-	coordinator.server, _ = comm.NewServer(ctx, commConfig, func(ctx context.Context, c net.Conn) {
-		// Not implemented
-		panic("not implemented")
-	})
-	// Register the RPC services for node requests
-	rpcService := &ConfigService{coordinator: coordinator}
-	err := coordinator.server.RegisterRPC(rpcService)
+	coordinator.server, _ = comm.NewServer(ctx, commConfig)
+	// Register the coordinator services for node requests
+	coorService := &CoordinatorService{coordinator: coordinator}
+	err := coordinator.server.RegisterRPC(coorService)
 	if err != nil {
 		return nil, err
 	}

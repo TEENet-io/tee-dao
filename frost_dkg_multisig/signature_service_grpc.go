@@ -2,8 +2,8 @@ package frost_dkg_multisig
 
 import (
 	"context"
-	"google.golang.org/grpc/codes"
-    "google.golang.org/grpc/status"
+	"errors"
+	"sync"
 
 	pb "tee-dao/rpc"
 )
@@ -11,6 +11,7 @@ import (
 type SignatureService struct {
 	pb.UnimplementedSignatureServer
 	participant *Participant
+	wg sync.WaitGroup
 }
 
 func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest) (*pb.GetPubKeyReply, error) {
@@ -18,7 +19,7 @@ func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest)
 		return &pb.GetPubKeyReply{
 			Success:        false,
 			GroupPublicKey: nil,
-		}, status.Errorf(codes.FailedPrecondition, "DKG not completed")
+		}, errors.New("DKG not completed")
 	}
 
 	return &pb.GetPubKeyReply{
@@ -33,9 +34,15 @@ func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRe
 		return &pb.GetSignatureReply{
 			Success:        false,
 			Signature: nil,
-		}, status.Errorf(codes.FailedPrecondition, "participant is not ready for signing")
+		}, errors.New("Not ready for signature generation")
 	}
-	s.participant.initiatePreprocessing(in.Msg)
+
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		s.participant.initiatePreprocessing(in.Msg)
+	}()
+
 	s.participant.logger.Info("Start waiting for signature generation")
 	defer s.participant.logger.Info("Stopped waiting for signature")
 
@@ -45,13 +52,13 @@ func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRe
 			return &pb.GetSignatureReply{
 				Success:        false,
 				Signature: nil,
-			}, status.Errorf(codes.FailedPrecondition, "context cancelled")
+			}, errors.New("context cancelled")
 		case signature := <-s.participant.signatureChan:
 			if len(signature) != 64 {
 				return &pb.GetSignatureReply{
 					Success:        false,
 					Signature: nil,
-				}, status.Errorf(codes.FailedPrecondition, "signature size mismatch: %d bytes", len(signature))
+				}, errors.New("Invalid signature length")
 			}
 			return &pb.GetSignatureReply{
 				Success:        true,

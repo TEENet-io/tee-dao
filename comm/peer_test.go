@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 const (
@@ -78,7 +79,7 @@ func TestPeer(t *testing.T) {
 			From:     conn.LocalAddr().String(),
 			To:       conn.RemoteAddr().String(),
 			Data:     []byte("1000"),
-			CreateAt: time.Now(),
+			CreateAt: timestamppb.Now(),
 		}
 		data, _ := msg.Serialize()
 
@@ -89,7 +90,7 @@ func TestPeer(t *testing.T) {
 		wg1.Wait()
 	}
 
-	srv := NewServer(ctx, srvCfg, srvHandleConn)
+	srv := NewServer(ctx, srvCfg)
 	go srv.ListenTLS()
 
 	time.Sleep(1 * time.Second)
@@ -118,7 +119,7 @@ func TestPeer(t *testing.T) {
 			From:     conn.LocalAddr().String(),
 			To:       conn.RemoteAddr().String(),
 			Data:     []byte("1"),
-			CreateAt: time.Now(),
+			CreateAt: timestamppb.Now(),
 		}
 		data, _ := msg.Serialize()
 		if err := peer.Write(data); err != nil {

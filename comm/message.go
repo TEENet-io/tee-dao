@@ -1,76 +1,34 @@
 package comm
 
 import (
-	"bytes"
-	"encoding/gob"
-	"fmt"
 	"sync"
-	"time"
+	// pb "tee-dao/rpc"
 )
 
-type MessageType byte
-
 const (
-	MsgTypeSetUp MessageType = 0x01
-	MsgTypePing  MessageType = 0x02
+	MsgTypeSetUp uint32 = 0x01
+	MsgTypePing  uint32 = 0x02
 )
 
 var (
-	messageTypeNames = map[MessageType]string{
+	messageTypeNames = map[uint32]string{
 		MsgTypeSetUp: "SetUp",
 		MsgTypePing:  "Ping",
 	}
 	messageTypeNamesMu sync.RWMutex
 )
 
-func RegisterMessageType(t MessageType, name string) {
+func RegisterMessageType(msgType uint32, name string) {
 	messageTypeNamesMu.Lock()
 	defer messageTypeNamesMu.Unlock()
-	messageTypeNames[t] = name
+	messageTypeNames[msgType] = name
 }
 
-func msgType(t MessageType) string {
+func msgName(msgType uint32) string {
 	messageTypeNamesMu.RLock()
 	defer messageTypeNamesMu.RUnlock()
-	if name, exists := messageTypeNames[t]; exists {
+	if name, exists := messageTypeNames[msgType]; exists {
 		return name
 	}
 	return "Unknown"
-}
-
-type Message struct {
-	MsgType  MessageType
-	Data     []byte
-	From     string
-	To       string
-	CreateAt time.Time
-}
-
-func (m *Message) Serialize() ([]byte, error) {
-	var buf bytes.Buffer
-	encoder := gob.NewEncoder(&buf)
-	err := encoder.Encode(m)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
-func (m *Message) String() string {
-	return fmt.Sprintf("type=%s, from=%s, to=%s, createdAt=%v, data=0x%x", msgType(m.MsgType), m.From, m.To, m.CreateAt.Unix(), m.Data)
-}
-
-func (m *Message) Deserialize(data []byte) error {
-
-	buf := bytes.NewBuffer(data)
-	decoder := gob.NewDecoder(buf)
-	if err := decoder.Decode(m); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (m *Message) Type() MessageType {
-	return MessageType(m.MsgType)
 }

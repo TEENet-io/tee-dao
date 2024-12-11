@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package rpc;
+
+option go_package = "../rpc";
+
+import "google/protobuf/timestamp.proto";
+
+service NodeComm {
+  // Sends a request for handler
+  rpc RequestHandler (NodeMsg) returns (NodeReply) {}
+}
+
+message NodeMsg {
+  uint32 msg_type = 1;
+  bytes data = 2;
+  string from = 3;
+  string to = 4;
+  google.protobuf.Timestamp create_at = 5;
+}
+
+message NodeReply {
+  bool success = 1;
+}

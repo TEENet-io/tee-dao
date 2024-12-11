@@ -14,7 +14,7 @@ cd tee-dao
 git submodule update --init --recursive
 
 # Build the crypto library
-cd secp126k1-frost
+cd secp256k1-frost
 mkdir build && cd build
 cmake -DSECP256K1_ENABLE_MODULE_FROST=ON -DSECP256K1_EXPERIMENTAL=ON -DSECP256K1_BUILD_EXAMPLES=ON .. 
 make
