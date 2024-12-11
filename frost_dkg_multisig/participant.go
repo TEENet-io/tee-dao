@@ -692,6 +692,7 @@ func (p *Participant) handlePreprocessingRequest(msg comm.Message) {
 	p.nonces[preprocessingRequest.Sequence] = nonce
 	if p.nonceCommitments[preprocessingRequest.Sequence] == nil {
 		p.nonceCommitments[preprocessingRequest.Sequence] = make(map[int]Secp256k1FrostNonceCommitment)
+		p.sequence = preprocessingRequest.Sequence + 1
 	}
 	p.nonceCommitments[preprocessingRequest.Sequence][p.id] = nonceCommitment.NonceCommitment
 	p.logger.With("func", "handlePreprocessingRequest").Debug("Stored nonce commitment", "from", msg.From, "sequence", preprocessingRequest.Sequence)
