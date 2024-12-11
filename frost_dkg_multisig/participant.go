@@ -234,7 +234,7 @@ func (p *Participant) initiateDKG() error {
 				return err
 			}
 
-			p.logger.Info("Broadcast share with commitment")
+			p.logger.Info("Send share with commitment", "to", p.idNameMap[i])
 			shareWithCommitmentMsg := &pb.NodeMsg{
 				MsgType:  DKGSecretShare,
 				Data:     serializedShareWithCommitment,
@@ -735,6 +735,7 @@ func (p *Participant) handlePreprocessingRequest(msg pb.NodeMsg) error {
 	p.nonces[preprocessingRequest.Sequence] = nonce
 	if p.nonceCommitments[preprocessingRequest.Sequence] == nil {
 		p.nonceCommitments[preprocessingRequest.Sequence] = make(map[int]Secp256k1FrostNonceCommitment)
+		p.sequence = preprocessingRequest.Sequence + 1
 	}
 	p.nonceCommitments[preprocessingRequest.Sequence][p.id] = nonceCommitment.NonceCommitment
 	p.logger.With("func", "handlePreprocessingRequest").Debug("Length of nonce commitments", "length", len(p.nonceCommitments[preprocessingRequest.Sequence]))
@@ -871,8 +872,8 @@ func (p *Participant) handleSignatureShareResponse(msg pb.NodeMsg) error {
 		return errors.New("Received signature share, but not the initiator")
 	}
 	if aggregateSig, exist := p.aggregatedSig[receivedSignatureShare.Sequence]; exist && aggregateSig != nil {
-		p.logger.With("func", "handleSignatureShareResponse").Debug("Received more signature shares than required. Ignore the message", "received", len(p.signatureShares[receivedSignatureShare.Sequence]), "required", p.minSigner)
-		return nil
+		p.logger.With("func", "handleSignatureShareResponse").Debug("Already have the signature. Ignore the message", "received", len(p.signatureShares[receivedSignatureShare.Sequence]), "required", p.minSigner)
+		return
 	}
 	// If the participant is the initiator, aggregate the signature shares
 	senderID, exist := p.GetIDByName(msg.From)
@@ -922,7 +923,7 @@ func (p *Participant) handleSignatureShareResponse(msg pb.NodeMsg) error {
 		p.logger.With("func", "handleSignatureShareResponse").Debug("Signature verification failed")
 	}
 
-	p.aggregatedSig[p.sequence] = aggregateSignature[:]
+	p.aggregatedSig[receivedSignatureShare.Sequence] = aggregateSignature[:]
 	p.signatureChan <- aggregateSignature[:]
 
 	return nil

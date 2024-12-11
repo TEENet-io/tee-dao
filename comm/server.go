@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -40,6 +41,7 @@ func NewServer(
 	serverLogger.Info("init gRPC server")
 	serverLogger.With("func", "NewServer").Debug("Loading server key pair",
 		slog.String("cert", cfg.Cert), slog.String("key", cfg.Key))
+
 
 	// Load server certificate and private key
 	serverCert, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key)
@@ -81,6 +83,7 @@ func NewServer(
 	grpcCreds := credentials.NewTLS(tlsConfig)
 	grpcServer := grpc.NewServer(grpc.Creds(grpcCreds))
 
+
 	return &Server{
 		ctx:        ctx,
 		cfg:        cfg,
@@ -107,7 +110,9 @@ func (srv *Server) ListenRPC() error {
 	srv.logger.Info("Starting RPC server")
 
 	// Start the listener
-	rpcListener, err := net.Listen("tcp", srv.cfg.RpcAddress)
+  serverAddress := "0.0.0.0:" + strings.Split(srv.cfg.RPCAddress, ":")[1]
+	rpcListener, err := net.Listen("tcp", serverAddress)
+
 	if err != nil {
 		srv.logger.With("func", "ListenRPC").Error("Failed to start gRPC server", slog.String("err", err.Error()))
 		return err
