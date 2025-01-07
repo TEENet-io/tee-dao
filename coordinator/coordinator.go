@@ -29,10 +29,11 @@ type CoordinatorConfig struct {
 
 type Coordinator struct {
 	config             *CoordinatorConfig
-	server             *comm.Server                           // Communication layer
-	Leader             string                                 // Leader name
-	participantID      int                                    // Participant ID to be assigned
-	participantConfigs map[int32]*rpc.NodeConfig // Participant configurations
+	server             *comm.Server // Communication layer
+	Leader             string       // Leader name
+	mu                 sync.Mutex
+	participantID      int      // Participant ID to be assigned
+	participantConfigs sync.Map // Participant configurations // map[int32]*rpc.NodeConfig
 	configCond         *sync.Cond
 	wg                 sync.WaitGroup // New WaitGroup for message loop
 	ctx                context.Context
@@ -48,7 +49,7 @@ func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
 	coordinator := &Coordinator{
 		config:             config,
 		participantID:      0,
-		participantConfigs: make(map[int32]*rpc.NodeConfig),
+		participantConfigs: sync.Map{},
 		configCond:         sync.NewCond(&sync.Mutex{}),
 		wg:                 sync.WaitGroup{},
 		ctx:                ctx,
@@ -108,36 +109,51 @@ func (c *Coordinator) Close() error {
 	return nil
 }
 
+// countSyncMapElements counts the number of elements in a sync.Map.
+func countSyncMapElements(m *sync.Map) int {
+	count := 0
+	m.Range(func(_, _ interface{}) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 func (c *Coordinator) getNodesConfig(participantConfig *rpc.NodeConfig) bool {
 	// Assume the attestation has been completed at the connection time
 
 	// Validate the participant configuration
 	exist := false
-	for _, config := range c.participantConfigs {
-		if config.Name == participantConfig.Name {
+	c.participantConfigs.Range(func(key, value interface{}) bool {
+		if value.(*rpc.NodeConfig).Name == participantConfig.Name {
 			exist = true
-			break
+			return false
 		}
-	}
+		return true
+	})
 	if exist {
 		c.logger.With("func", "getNodesConfig").Debug("Already exist config for name", "name", participantConfig.Name)
 		return false
 	}
 
 	// Store the participant configuration
-	c.participantConfigs[int32(c.participantID)] = participantConfig
+	c.participantConfigs.Store(int32(c.participantID), participantConfig)
+	c.mu.Lock()
 	c.participantID++
+	c.mu.Unlock()
 
 	// Check if all participants' configurations have been received
-	if len(c.participantConfigs) == c.config.NodesNum {
+	participantConfigsNum := countSyncMapElements(&c.participantConfigs)
+	if participantConfigsNum == c.config.NodesNum {
 		// randomly select a leader
 		randLeaderID := rand.IntN(c.config.NodesNum)
-		for id, config := range c.participantConfigs {
-			if id == int32(randLeaderID) {
-				c.Leader = config.Name
-				break
+		c.participantConfigs.Range(func(key, value interface{}) bool {
+			if key == int32(randLeaderID) {
+				c.Leader = value.(*rpc.NodeConfig).Name
+				return false
 			}
-		}
+			return true
+		})
 		// Broadcast that all configurations have been received
 		c.configCond.Broadcast()
 	}
