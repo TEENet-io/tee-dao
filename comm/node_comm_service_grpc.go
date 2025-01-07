@@ -12,10 +12,10 @@ type NodeCommService struct {
 }
 
 func (s *NodeCommService) RequestHandler(_ context.Context, in *pb.NodeMsg) (*pb.NodeReply, error) {
-	err := s.Communicator.handleMessage(*in)
+	err := s.Communicator.handleMessage(in)
 	if err != nil {
 		return &pb.NodeReply{Success: false}, err
 	}
-	
+
 	return &pb.NodeReply{Success: true}, nil
 }

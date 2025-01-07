@@ -1,16 +1,16 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
-	"context"
-	"log"
 	"flag"
 	"fmt"
-	"io/ioutil"
+	"log"
 	"os"
 	pb "tee-dao/rpc"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 )
@@ -36,25 +36,45 @@ type MyConfig struct {
 	ServerCACert string
 }
 
-func LoadClientConfig(filePath string) (*MyConfig, error) {
-	file, err := os.Open(filePath)
+func loadConfig(configPath string) (*MyConfig, error) {
+	file, err := os.Open(configPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open client config file: %v", err)
+		return nil, err
 	}
 	defer file.Close()
 
-	data, err := ioutil.ReadAll(file)
+	config := &MyConfig{}
+	decoder := json.NewDecoder(file)
+	err = decoder.Decode(config)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read client config file: %v", err)
+		return nil, err
 	}
 
-	var clientConfig MyConfig
-	err = json.Unmarshal(data, &clientConfig)
+	return config, nil
+}
+
+func createTLSConfig(certFile, keyFile, serverCaCertFile string) (*tls.Config, error) {
+	// Load client certificate and key
+	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse client config JSON: %v", err)
+		fmt.Printf("failed to load client certificate and key: %v", err)
+		return nil, err
 	}
 
-	return &clientConfig, nil
+	// Load CA certificate
+	caCertPool := x509.NewCertPool()
+	log.Printf("Loading CA cert: %s", serverCaCertFile)
+	caCert, err := os.ReadFile(serverCaCertFile)
+	if err != nil {
+		fmt.Printf("Failed to read CA certificate. err: %v", err)
+		return nil, err
+	}
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caCertPool,
+	}, nil
 }
 
 func main() {
@@ -62,37 +82,21 @@ func main() {
 	flag.Parse()
 
 	// Load the client configuration
-	clientConfig, err := LoadClientConfig(fmt.Sprintf("config/config_client%d.json", *uid))
+	clientConfig, err := loadConfig(fmt.Sprintf("config/config_client%d.json", *uid))
 	if err != nil {
 		fmt.Printf("Error loading client config: %v", err)
 		return
 	}
 
-	// Load client certificate and key
-	cert, err := tls.LoadX509KeyPair(clientConfig.Cert, clientConfig.Key)
+	// Create a TLS configuration for the client
+	tlsConfig, err := createTLSConfig(clientConfig.Cert, clientConfig.Key, clientConfig.ServerCACert)
 	if err != nil {
-		fmt.Printf("failed to load client certificate and key: %v", err)
+		fmt.Printf("Error creating TLS config: %v", err)
 		return
-	}
-
-	// Load CA certificate
-	caCertPool := x509.NewCertPool()
-	log.Printf("Loading CA cert: %s", clientConfig.ServerCACert)
-	caCert, err := os.ReadFile(clientConfig.ServerCACert)
-	if err != nil {
-		fmt.Printf("Failed to read CA certificate. err: %v", err)
-		return
-	}
-	caCertPool.AppendCertsFromPEM(caCert)
-
-	// Create a TLS configuration
-	tlsConfig := &tls.Config{
-		Certificates: []tls.Certificate{cert},
-		RootCAs:      caCertPool,
 	}
 
 	// Connect to the RPC server with TLS
-	conn, err := grpc.Dial(clientConfig.ServerAddress, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	conn, err := grpc.NewClient(clientConfig.ServerAddress, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	if err != nil {
 		fmt.Printf("Error connecting to RPC server: %v", err)
 		return

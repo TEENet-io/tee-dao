@@ -68,7 +68,7 @@ func (d *DKGComplete) String() string {
 
 // PreprocessingSequence Struct
 type PreprocessingSequence struct {
-	Sequence int
+	InitiatorSequence InitiatorSequence
 }
 
 func (p *PreprocessingSequence) Serialize() ([]byte, error) {
@@ -88,8 +88,8 @@ func (p *PreprocessingSequence) Deserialize(data []byte) error {
 
 // NonceCommitment Struct
 type NonceCommitment struct {
-	Sequence        int
-	NonceCommitment Secp256k1FrostNonceCommitment
+	InitiatorSequence InitiatorSequence
+	NonceCommitment   Secp256k1FrostNonceCommitment
 }
 
 func (n *NonceCommitment) Serialize() ([]byte, error) {
@@ -108,13 +108,13 @@ func (n *NonceCommitment) Deserialize(data []byte) error {
 }
 
 func (n *NonceCommitment) String() string {
-	return fmt.Sprintf("NonceCommitment{Sequence: %d, NonceCommitment: %v}", n.Sequence, n.NonceCommitment)
+	return fmt.Sprintf("NonceCommitment{InitiatorSequence: %v, NonceCommitment: %v}", n.InitiatorSequence, n.NonceCommitment)
 }
 
 // PreprocessingComplete struct
 type PreprocessingComplete struct {
-	Sequence int
-	Complete bool
+	InitiatorSequence InitiatorSequence
+	Complete          bool
 }
 
 func (d *PreprocessingComplete) Serialize() ([]byte, error) {
@@ -134,9 +134,9 @@ func (d *PreprocessingComplete) Deserialize(data []byte) error {
 
 // SignMessage Struct
 type SignMessage struct {
-	Sequence int
-	Signers  []int
-	Msg_hash [32]byte
+	InitiatorSequence InitiatorSequence
+	Signers           []int
+	Msg_hash          [32]byte
 }
 
 func (s *SignMessage) Serialize() ([]byte, error) {
@@ -155,14 +155,14 @@ func (s *SignMessage) Deserialize(data []byte) error {
 }
 
 func (s *SignMessage) String() string {
-	return fmt.Sprintf("SignMessage{Sequence: %d, Msg_hash: %x}", s.Sequence, s.Msg_hash)
+	return fmt.Sprintf("SignMessage{InitiatorSequence: %v, Msg_hash: %x}", s.InitiatorSequence, s.Msg_hash)
 }
 
 // SignatureShare Struct
 type SignatureShare struct {
-	Sequence       int
-	Msg_hash       [32]byte
-	SignatureShare Secp256k1FrostSignatureShare
+	InitiatorSequence InitiatorSequence
+	Msg_hash          [32]byte
+	SignatureShare    Secp256k1FrostSignatureShare
 }
 
 func (s *SignatureShare) Serialize() ([]byte, error) {
@@ -181,5 +181,5 @@ func (s *SignatureShare) Deserialize(data []byte) error {
 }
 
 func (s *SignatureShare) String() string {
-	return fmt.Sprintf("SignatureShare{Sequence: %d, SignatureShare: %v}", s.Sequence, s.SignatureShare)
+	return fmt.Sprintf("SignatureShare{Sequence: %v, SignatureShare: %v}", s.InitiatorSequence, s.SignatureShare)
 }

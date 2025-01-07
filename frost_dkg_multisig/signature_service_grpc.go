@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	pb "tee-dao/rpc"
 )
@@ -11,7 +12,7 @@ import (
 type SignatureService struct {
 	pb.UnimplementedSignatureServer
 	participant *Participant
-	wg sync.WaitGroup
+	wg          sync.WaitGroup
 }
 
 func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest) (*pb.GetPubKeyReply, error) {
@@ -28,42 +29,50 @@ func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest)
 	}, nil
 }
 
-
 func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRequest) (*pb.GetSignatureReply, error) {
 	if !s.participant.readyForInitPreprocessing {
 		return &pb.GetSignatureReply{
-			Success:        false,
+			Success:   false,
 			Signature: nil,
-		}, errors.New("Not ready for signature generation")
+		}, errors.New("not ready for signature generation")
+	}
+
+	// Create a new request
+	request := &Request{
+		Message:  in.Msg,
+		Response: make(chan []byte),
 	}
 
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		s.participant.initiatePreprocessing(in.Msg)
+		s.participant.HandleRequest(request)
 	}()
 
 	s.participant.logger.Info("Start waiting for signature generation")
 	defer s.participant.logger.Info("Stopped waiting for signature")
 
-	for {
-		select {
-		case <-s.participant.ctx.Done():
+	select {
+	case <-s.participant.ctx.Done():
+		return &pb.GetSignatureReply{
+			Success:   false,
+			Signature: nil,
+		}, errors.New("context cancelled")
+	case signature := <-request.Response:
+		if len(signature) != 64 {
 			return &pb.GetSignatureReply{
-				Success:        false,
+				Success:   false,
 				Signature: nil,
-			}, errors.New("context cancelled")
-		case signature := <-s.participant.signatureChan:
-			if len(signature) != 64 {
-				return &pb.GetSignatureReply{
-					Success:        false,
-					Signature: nil,
-				}, errors.New("Invalid signature length")
-			}
-			return &pb.GetSignatureReply{
-				Success:        true,
-				Signature: signature,
-			}, nil
+			}, errors.New("invalid signature length")
 		}
+		return &pb.GetSignatureReply{
+			Success:   true,
+			Signature: signature,
+		}, nil
+	case <-time.After(5 * time.Minute): // Timeout after 30 seconds
+		return &pb.GetSignatureReply{
+			Success:   false,
+			Signature: nil,
+		}, errors.New("signature generation timeout")
 	}
 }

@@ -1,9 +1,9 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -12,6 +12,7 @@ import (
 	"sync"
 	"syscall"
 	"tee-dao/comm"
+
 	// "tee-dao/coordinator"
 	"tee-dao/frost_dkg_multisig"
 	pb "tee-dao/rpc"
@@ -63,6 +64,8 @@ func requestConfig(nodeConfig *pb.NodeConfig) (*pb.GetConfigReply, error) {
 	if err != nil {
 		log.Fatalf("Error calling GetConfig: %v", err)
 	}
+
+	log.Printf("Configuration Reply: %v", getConfigReply)
 
 	return getConfigReply, nil
 }

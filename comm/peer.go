@@ -2,53 +2,38 @@ package comm
 
 import (
 	"context"
-	"log/slog"
 	"fmt"
-	"sync"
-	"time"
+	"log/slog"
 
-	pb "tee-dao/rpc"
 	"tee-dao/logger"
+	pb "tee-dao/rpc"
 
-	"google.golang.org/protobuf/types/known/timestamppb"
 	"google.golang.org/grpc"
-)
-
-var (
-	FreqToRead = 1 * time.Second
-	MaxMsgSize = 2048
+	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 // Peer handles the TLS connection to a peer
 type Peer struct {
-	ctx context.Context
-
 	// TODO: Each peer has a unique identifier, typically a string or a hashed address (e.g., peerID = SHA-256 hash of its network address).
-	nonce uint32
-	conn  *grpc.ClientConn
+	nonce  uint32
+	conn   *grpc.ClientConn
 	local  string
-	remote    string
-	mu    sync.Mutex
-
-	// channel to send received messages to
-	msgCh chan []byte
+	remote string
 
 	logger *slog.Logger
 }
 
-func NewPeer(ctx context.Context, nonce uint32, conn *grpc.ClientConn, local string, remote string, msgCh chan []byte) *Peer {
+func NewPeer(nonce uint32, conn *grpc.ClientConn, local string, remote string) *Peer {
 	peerlogger := logger.New(logLvl).
 		With("nonce", nonce).
 		With("local", local).
 		With("remote", remote)
 
 	return &Peer{
-		ctx:    ctx,
 		nonce:  nonce,
 		conn:   conn,
 		local:  local,
 		remote: remote,
-		msgCh:  msgCh,
 		logger: peerlogger,
 	}
 }
@@ -88,7 +73,6 @@ func (p *Peer) Ping() error {
 func (p *Peer) SetProperty(local string, remote string, nonce uint32) {
 	p.local = local
 	p.remote = remote
-	p.nonce = nonce
 	p.logger = logger.New(logLvl).
 		With("nonce", nonce).
 		With("local", local).

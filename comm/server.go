@@ -9,7 +9,7 @@ import (
 	"net"
 	"os"
 	"strings"
-	"sync"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
@@ -21,13 +21,9 @@ type Server struct {
 	cfg *Config
 	ctx context.Context
 
-	listener   net.Listener
-	handleConn func(context.Context, net.Conn)
-
 	rpcListener net.Listener
 
-	logger *slog.Logger
-	wg     sync.WaitGroup
+	logger     *slog.Logger
 	grpcServer *grpc.Server
 }
 
@@ -41,7 +37,6 @@ func NewServer(
 	serverLogger.Info("init gRPC server")
 	serverLogger.With("func", "NewServer").Debug("Loading server key pair",
 		slog.String("cert", cfg.Cert), slog.String("key", cfg.Key))
-
 
 	// Load server certificate and private key
 	serverCert, err := tls.LoadX509KeyPair(cfg.Cert, cfg.Key)
@@ -83,34 +78,32 @@ func NewServer(
 	grpcCreds := credentials.NewTLS(tlsConfig)
 	grpcServer := grpc.NewServer(grpc.Creds(grpcCreds))
 
-
 	return &Server{
 		ctx:        ctx,
 		cfg:        cfg,
 		logger:     serverLogger,
-		grpcServer:	grpcServer,
+		grpcServer: grpcServer,
 	}, nil
 }
 
 func (srv *Server) Close() {
 	defer srv.logger.Info("Stopped TLS server")
 
-	if srv.listener != nil {
-		srv.listener.Close()
-	}
-
 	if srv.rpcListener != nil {
 		srv.rpcListener.Close()
 	}
 
-	srv.wg.Wait()
+	if srv.grpcServer != nil {
+		srv.grpcServer.Stop()
+	}
+
 }
 
 func (srv *Server) ListenRPC() error {
 	srv.logger.Info("Starting RPC server")
 
 	// Start the listener
-  serverAddress := "0.0.0.0:" + strings.Split(srv.cfg.RpcAddress, ":")[1]
+	serverAddress := "0.0.0.0:" + strings.Split(srv.cfg.RpcAddress, ":")[1]
 	rpcListener, err := net.Listen("tcp", serverAddress)
 
 	if err != nil {
