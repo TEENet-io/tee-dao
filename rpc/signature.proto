@@ -11,9 +11,10 @@ service Signature {
   rpc GetSignature (GetSignatureRequest) returns (GetSignatureReply) {}
 }
 
-// The request message containing the user's id.
+// The request message containing the user's id and user's name.
 message GetPubKeyRequest {
   int32 userID = 1;
+  string userName = 2;
 }
 
 // The response message containing the the state and the pubkey
@@ -24,7 +25,8 @@ message GetPubKeyReply {
 
 // The request message containing the message to sign.
 message GetSignatureRequest {
-  bytes msg = 1;  // The message to sign
+  string userName = 1;  // The user's name
+  bytes msg = 2;  // The message to sign
 }
 
 // The response message containing the signature.

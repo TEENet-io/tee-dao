@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"sync"
+	"tee-dao/attestation"
 	"tee-dao/comm"
 	"tee-dao/logger"
 	"unsafe"
@@ -37,6 +38,7 @@ type Participant struct {
 	idNameMap                 map[int]string
 	config                    *comm.Config
 	communicator              *comm.Communicator // Communication layer
+	attestationServer         *attestation.AttestationServer
 	context                   []byte
 	tag                       []byte
 	commitments               sync.Map // map[int]*Secp256k1FrostVssCommitments
@@ -123,6 +125,9 @@ func NewParticipant(dkgLeader string, config *comm.Config, isDKGLeader bool, id 
 	p.communicator.RegisterHandler("SignRequest", SignRequest, p.handleSignRequest)
 	p.communicator.RegisterHandler("SignatureShareResponse", SignatureShareResponse, p.handleSignatureShareResponse)
 
+	// Initialize the attestation server
+	p.attestationServer = attestation.NewAttestationServer(ctx, config.Name)
+
 	// Register the node communication service for client requests
 	nodeCommService := &comm.NodeCommService{Communicator: p.communicator}
 	err = p.communicator.RegisterRPCService(nodeCommService)
@@ -149,6 +154,12 @@ func (p *Participant) Start() error {
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
+		p.attestationServer.ListenAttestation()
+	}()
+
+	p.wg.Add(1)
+	go func() {
+		defer p.wg.Done()
 		p.communicator.Start()
 
 		// Listen indefinitely for messages or until context is canceled
@@ -165,6 +176,11 @@ func (p *Participant) Close() error {
 	// Cancel the context to stop the message handling loop
 	p.cancel()
 
+	// Close the attestation server
+	if p.attestationServer != nil {
+		p.attestationServer.Close()
+	}
+
 	// Close the communicator
 	if p.communicator != nil {
 		p.communicator.Close()
@@ -174,6 +190,18 @@ func (p *Participant) Close() error {
 	p.wg.Wait()
 	p.logger.Info("Participant shut down.")
 	return nil
+}
+
+func (p *Participant) waitForClientBeAttested(name string) {
+	p.attestationServer.AttestedCond.L.Lock()
+	defer p.attestationServer.AttestedCond.L.Unlock()
+
+	for {
+		if _, ok := p.attestationServer.AttestedServers.Load(name); ok {
+			return
+		}
+		p.attestationServer.AttestedCond.Wait()
+	}
 }
 
 // sendMessage sends a message to a specific participant.

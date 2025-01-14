@@ -13,6 +13,12 @@ type CoordinatorService struct {
 }
 
 func (s *CoordinatorService) GetConfig(_ context.Context, in *pb.GetConfigRequest) (*pb.GetConfigReply, error) {
+	// check if the client is already attested
+	if _, ok := s.coordinator.attestationServer.AttestedServers.Load(in.ParticipantConfig.Name); !ok {
+		// wait for the server being added to attestedServers
+		s.coordinator.waitForClientBeAttested(in.ParticipantConfig.Name)
+	}
+
 	result := s.coordinator.getNodesConfig(in.ParticipantConfig)
 	if !result {
 		return &pb.GetConfigReply{
@@ -20,7 +26,7 @@ func (s *CoordinatorService) GetConfig(_ context.Context, in *pb.GetConfigReques
 			Threshold:          0,
 			Leader:             "",
 			ParticipantConfigs: nil,
-		}, errors.New("Failed to get nodes config")
+		}, errors.New("failed to get nodes config")
 	}
 
 	s.coordinator.logger.Info("Start waiting for configs")

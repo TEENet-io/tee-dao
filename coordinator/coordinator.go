@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"sync"
+	"tee-dao/attestation"
 	"tee-dao/comm"
 	"tee-dao/logger"
 	"tee-dao/rpc"
@@ -30,7 +31,8 @@ type CoordinatorConfig struct {
 type Coordinator struct {
 	config             *CoordinatorConfig
 	server             *comm.Server // Communication layer
-	Leader             string       // Leader name
+	attestationServer  *attestation.AttestationServer
+	Leader             string // Leader name
 	mu                 sync.Mutex
 	participantID      int      // Participant ID to be assigned
 	participantConfigs sync.Map // Participant configurations // map[int32]*rpc.NodeConfig
@@ -66,6 +68,10 @@ func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
 		ClientsCaCert: config.NodesCACert,
 	}
 
+	// Initialize the attestation server
+	coordinator.attestationServer = attestation.NewAttestationServer(ctx, "coordinator")
+
+	// Initialize the communication layer
 	coordinator.server, _ = comm.NewServer(ctx, commConfig)
 	// Register the coordinator services for node requests
 	coorService := &CoordinatorService{coordinator: coordinator}
@@ -77,9 +83,16 @@ func NewCoordinator(config *CoordinatorConfig) (*Coordinator, error) {
 	return coordinator, nil
 }
 
-// Start starts the coordinator
+// Start the coordinator
 func (c *Coordinator) Start() error {
 	c.logger.Info("Starting coordinator")
+
+	// Listen for attestation requests
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		c.attestationServer.ListenAttestation()
+	}()
 
 	// Start the server
 	c.wg.Add(1)
@@ -97,6 +110,11 @@ func (c *Coordinator) Close() error {
 
 	// Cancel the context
 	c.cancel()
+
+	// Close the attestation server
+	if c.attestationServer != nil {
+		c.attestationServer.Close()
+	}
 
 	// Close the server
 	if c.server != nil {
@@ -159,4 +177,16 @@ func (c *Coordinator) getNodesConfig(participantConfig *rpc.NodeConfig) bool {
 	}
 
 	return true
+}
+
+func (c *Coordinator) waitForClientBeAttested(name string) {
+	c.attestationServer.AttestedCond.L.Lock()
+	defer c.attestationServer.AttestedCond.L.Unlock()
+
+	for {
+		if _, ok := c.attestationServer.AttestedServers.Load(name); ok {
+			return
+		}
+		c.attestationServer.AttestedCond.Wait()
+	}
 }

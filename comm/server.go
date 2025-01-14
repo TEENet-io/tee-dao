@@ -121,6 +121,7 @@ func (srv *Server) ListenRPC() error {
 		}
 		srv.logger.With("func", "ListenRPC").Error("gRPC server encountered an error", slog.String("err", err.Error()))
 	}
+	srv.rpcListener = rpcListener
 
 	return nil
 }

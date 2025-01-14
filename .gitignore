@@ -26,6 +26,8 @@ go.work.sum
 
 config/data
 
+script/cred/
+
 /participant_node
 /coordinator_node
 /log*

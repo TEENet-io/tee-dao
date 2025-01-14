@@ -7,13 +7,15 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
+	"tee-dao/attestation"
 	"tee-dao/comm"
 
-	// "tee-dao/coordinator"
 	"tee-dao/frost_dkg_multisig"
 	pb "tee-dao/rpc"
 	"tee-dao/utils"
@@ -48,7 +50,7 @@ func requestConfig(nodeConfig *pb.NodeConfig) (*pb.GetConfigReply, error) {
 	}
 
 	// Connect to the gRPC server with TLS
-	conn, err := grpc.Dial(nodeConfig.CoordinatorAddress, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	conn, err := grpc.NewClient(nodeConfig.CoordinatorAddress, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	if err != nil {
 		log.Fatalf("Error connecting to gRPC server: %v", err)
 	}
@@ -81,7 +83,10 @@ func main() {
 
 	log.Printf("Node config loaded: %v\n", nodeConfig)
 
-	// Step 2: Request the general configuration from the coordinator
+	// Step 2: Remote Attestation with the coordinator
+	remoteAttestationWithCoordinator()
+
+	// Step 3: Request the general configuration from the coordinator
 	configReply, err := requestConfig(nodeConfig)
 	if err != nil {
 		log.Fatalf("Error requesting configuration: %v", err)
@@ -116,7 +121,7 @@ func main() {
 		return "Participant"
 	}())
 
-	// Step 3: Initialize participant state and start DKG
+	// Step 4: Initialize participant state and start DKG
 	// Initialize context and tag
 	context := []byte("example_context") // For DKG
 	tag := []byte("message_tag")         // For Signature
@@ -149,4 +154,105 @@ func main() {
 	// Wait for the signal handling goroutine to finish
 	wg.Wait()
 	log.Println("Participant shut down gracefully")
+}
+
+/* configuration const */
+const (
+	address       = "20.205.129.240:8072"
+	nonceClient   = "$Q9%*@JW#C%Y"                   // don't need to change
+	clientCredDir = "./script/cred/client-cred"      //folder path to read client credentials(certs)
+	serverCredDir = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
+	mma_path      = "./script/cred/mma_config.json"  //tdx mma config file
+	psh_script    = "./script/cred"
+	name          = "client"
+)
+
+func remoteAttestationWithCoordinator() {
+	//1.client establish socket with server（ip:localhost, port:8071）
+	conn, err := net.Dial("tcp", address)
+	if err != nil {
+		fmt.Println("Error connecting to server:", err)
+		return
+	}
+	defer conn.Close()
+
+	//2.client send: nonce(12-byte length in string format), client-ca.crt, client.crt
+	//2.1 Access these file. The directory path of all these files located：./script/cred/client-cred
+	//2.2 Sent to the server;
+	attestation.SendMessage(conn, nonceClient)
+	attestation.SendMessage(conn, name)
+	myCACert := clientCredDir + "/" + name + "-ca.crt"
+	myCert := clientCredDir + "/" + name + ".crt"
+	attestation.SendFile(conn, myCACert)
+	attestation.SendFile(conn, myCert)
+
+	//3. receive server nonce,server-ca.crt, server.crt; And store them in "./script/cred/server-cred-recv" folder
+	serverNonce := attestation.ReceiveMessage(conn)
+	fmt.Println("Server Nonce:", serverNonce)
+	attestation.ReceiveFile(conn, serverCredDir+"/server-ca.crt")
+	attestation.ReceiveFile(conn, serverCredDir+"/server.crt")
+
+	//4. call the system tool and obtain the return result, stored in JWTResult
+	extractPubkey := attestation.CallOpensslGetPubkey(myCert)
+	extractPubkey = attestation.ExtractPubkeyFromPem(extractPubkey)
+	fmt.Println("Extracted Public Key:", extractPubkey)
+
+	machineName, err := os.Hostname()
+	fmt.Println("Machine Name:", machineName)
+	jwtResult := ""
+	if err != nil {
+		fmt.Println("Error getting machine name:", err)
+		return
+	}
+	if strings.Contains(strings.ToUpper(machineName), "SNP") {
+		fmt.Println("callSNPAttestationClient")
+		jwtResult = attestation.CallSNPAttestationClient(serverNonce + extractPubkey)
+
+	} else if strings.Contains(strings.ToUpper(machineName), "TDX") {
+		fmt.Println("callTDXAttestationClient")
+		jwtResult = attestation.CallTDXAttestationClient(serverNonce+extractPubkey, mma_path)
+	} else {
+		fmt.Println("Unsupported machine type")
+		return
+	}
+
+	//5. client send JWTResult to server
+	fmt.Println("Send self JWT Result:", jwtResult)
+	attestation.SendMessage(conn, jwtResult)
+
+	// //6. receive server JWTResult and print it
+	// serverJwtResult := attestation.ReceiveMessage(conn)
+	// fmt.Println("Recv Server JWT Result:", serverJwtResult)
+
+	// //7. validate server JWTResult
+	// isValid, err := attestation.ValidateJWTwithPSH(serverJwtResult)
+	// if err != nil {
+	// 	fmt.Println("Error validating JWT:", err)
+	// } else {
+	// 	fmt.Println("JWT Validation Result:", isValid)
+	// }
+
+	// //8. Check the JWT token claims
+	// expectPubkey := attestation.CallOpensslGetPubkey(serverCredDir + "/server.crt")
+	// expectPubkey = attestation.ExtractPubkeyFromPem(expectPubkey)
+	// expectUserData := attestation.CalExptUserData(serverCredDir + "/server.crt")
+	// checkTee, checkPubkey, checkNonce, checkUserData, err := attestation.ExtractAndCheckJWTCliams(serverJwtResult, expectPubkey, nonceClient, expectUserData)
+	// verificationResult := "Failed"
+	// if err != nil {
+	// 	fmt.Println("Error checking JWT claims:", err)
+	// } else {
+	// 	if checkNonce && checkPubkey && checkTee && checkUserData {
+	// 		fmt.Println("Vlidation of JWT Claims passed")
+	// 		verificationResult = "Success"
+	// 	} else {
+	// 		fmt.Println("Vlidation of JWT Claims failed")
+	// 	}
+	// }
+	// attestation.SendMessage(conn, verificationResult)
+	result := attestation.ReceiveMessage(conn)
+	if result == "Success" {
+		fmt.Println("Server validation passed")
+	} else {
+		fmt.Println("Server validation failed")
+	}
 }

@@ -16,6 +16,12 @@ type SignatureService struct {
 }
 
 func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest) (*pb.GetPubKeyReply, error) {
+	// check if the client is already attested
+	if _, ok := s.participant.attestationServer.AttestedServers.Load(in.UserName); !ok {
+		// wait for the server being added to attestedServers
+		s.participant.waitForClientBeAttested(in.UserName)
+	}
+
 	if !s.participant.dkgCompleted {
 		return &pb.GetPubKeyReply{
 			Success:        false,
@@ -30,6 +36,11 @@ func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest)
 }
 
 func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRequest) (*pb.GetSignatureReply, error) {
+	// check if the client is already attested
+	if _, ok := s.participant.attestationServer.AttestedServers.Load(in.UserName); !ok {
+		// wait for the server being added to attestedServers
+		s.participant.waitForClientBeAttested(in.UserName)
+	}
 	if !s.participant.readyForInitPreprocessing {
 		return &pb.GetSignatureReply{
 			Success:   false,
