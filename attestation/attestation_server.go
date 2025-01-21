@@ -18,8 +18,8 @@ const (
 	nonceServer   = "1P6*&%4u#w$M"
 	serverCreDir  = "./script/cred/server-cred"      //folder path to read server credentials(certs)
 	clientCredDir = "./script/cred/client-cred-recv" //folder path to store client credentials(certs)
-	mma_path      = "./script/cred/mma_config.json"  //tdx mma config file
-	psh_script    = "./script/cred"
+	mma_path      = "./script/mma_config.json"       //tdx mma config file
+	psh_script    = "./script"
 )
 
 // 定义签名算法映射

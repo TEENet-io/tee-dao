@@ -92,7 +92,7 @@ func main() {
 	}
 
 	// Remote Attestation with the server
-	remoteAttestationWithServer()
+	remoteAttestationWithServer(clientConfig.Name)
 
 	// Create a TLS configuration for the client
 	tlsConfig, err := createTLSConfig(clientConfig.Cert, clientConfig.Key, clientConfig.ServerCACert)
@@ -140,12 +140,11 @@ const (
 	nonceClient   = "$Q9%*@JW#C%Y"                   // don't need to change
 	clientCredDir = "./script/cred/client-cred"      //folder path to read client credentials(certs)
 	serverCredDir = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
-	mma_path      = "./script/cred/mma_config.json"  //tdx mma config file
-	psh_script    = "./script/cred"
-	name          = "client0"
+	mma_path      = "./script/mma_config.json"       //tdx mma config file
+	psh_script    = "./script"
 )
 
-func remoteAttestationWithServer() {
+func remoteAttestationWithServer(name string) {
 	//1.client establish socket with server（ip:localhost, port:8071）
 	conn, err := net.Dial("tcp", address)
 	if err != nil {

@@ -84,7 +84,7 @@ func main() {
 	log.Printf("Node config loaded: %v\n", nodeConfig)
 
 	// Step 2: Remote Attestation with the coordinator
-	remoteAttestationWithCoordinator()
+	remoteAttestationWithCoordinator(nodeConfig.Name)
 
 	// Step 3: Request the general configuration from the coordinator
 	configReply, err := requestConfig(nodeConfig)
@@ -162,12 +162,11 @@ const (
 	nonceClient   = "$Q9%*@JW#C%Y"                   // don't need to change
 	clientCredDir = "./script/cred/client-cred"      //folder path to read client credentials(certs)
 	serverCredDir = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
-	mma_path      = "./script/cred/mma_config.json"  //tdx mma config file
-	psh_script    = "./script/cred"
-	name          = "client"
+	mma_path      = "./script/mma_config.json"       //tdx mma config file
+	psh_script    = "./script"
 )
 
-func remoteAttestationWithCoordinator() {
+func remoteAttestationWithCoordinator(name string) {
 	//1.client establish socket with server（ip:localhost, port:8071）
 	conn, err := net.Dial("tcp", address)
 	if err != nil {
