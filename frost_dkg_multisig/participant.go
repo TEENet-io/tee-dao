@@ -643,6 +643,9 @@ func (p *Participant) receiveShareWithCommitment(participantId int, secretShare 
 			p.logger.With("func", "receiveShareWithCommitment").Error("Error in DKG Finalize")
 			return errors.New("error in DKG Finalize")
 		}
+		isOdd := IsPubkeyOdd(&p.keypair.PublicKeys)
+		p.logger.With("func", "receiveShareWithCommitment").Info("Is public key odd", "isOdd", isOdd)
+
 		p.logger.With("func", "receiveShareWithCommitment").Debug("Finalized DKG", "keypair", p.keypair)
 		err := p.completeDKG()
 		if err != nil {

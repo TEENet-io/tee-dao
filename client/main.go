@@ -136,12 +136,13 @@ func main() {
 
 /* configuration const */
 const (
-	address       = "20.189.73.225:8072"
-	nonceClient   = "$Q9%*@JW#C%Y"                   // don't need to change
-	clientCredDir = "./script/cred/client-cred"      //folder path to read client credentials(certs)
-	serverCredDir = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
-	mma_path      = "./script/mma_config.json"       //tdx mma config file
-	psh_script    = "./script"
+	address          = "20.189.73.225:8072"
+	nonceClient      = "$Q9%*@JW#C%Y"                   // don't need to change
+	clientCredDir    = "./script/cred/client-cred"      //folder path to read client credentials(certs)
+	serverCredDir    = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
+	mma_path         = "./script/mma_config.json"       //tdx mma config file
+	psh_script       = "./script"
+	program_hashfile = "./script/server_hashOf_test-program"
 )
 
 func remoteAttestationWithServer(name string) {
@@ -212,7 +213,7 @@ func remoteAttestationWithServer(name string) {
 	//8. Check the JWT token claims
 	expectPubkey := attestation.CallOpensslGetPubkey(serverCredDir + "/server.crt")
 	expectPubkey = attestation.ExtractPubkeyFromPem(expectPubkey)
-	expectUserData := attestation.CalExptUserData(serverCredDir + "/server.crt")
+	expectUserData := attestation.CalExptUserData(serverCredDir+"/server.crt", program_hashfile)
 	checkTee, checkPubkey, checkNonce, checkUserData, err := attestation.ExtractAndCheckJWTCliams(serverJwtResult, expectPubkey, nonceClient, expectUserData)
 	verificationResult := "Failed"
 	if err != nil {

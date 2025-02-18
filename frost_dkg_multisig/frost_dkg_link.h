@@ -51,6 +51,8 @@ int verify(const unsigned char *sig64,
            const unsigned char *msg32,
            const secp256k1_frost_pubkey *public_keys); /* This function verifies a signature. */   
 
+int is_pubkey_odd(const secp256k1_frost_pubkey *pubkey); /* This function check if the y coordinate of pubkey is odd. */
+
 int perform_dkg_multisig_with_interface(); /* This function performs the DKG and multisig process with interface. */
 int perform_dkg_multisig(); /* This function performs the DKG and multisig process. */
 

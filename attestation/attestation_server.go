@@ -14,12 +14,13 @@ import (
 
 /* configuration const */
 const (
-	address       = "0.0.0.0:8072" //"localhost:8072"
-	nonceServer   = "1P6*&%4u#w$M"
-	serverCreDir  = "./script/cred/server-cred"      //folder path to read server credentials(certs)
-	clientCredDir = "./script/cred/client-cred-recv" //folder path to store client credentials(certs)
-	mma_path      = "./script/mma_config.json"       //tdx mma config file
-	psh_script    = "./script"
+	address          = "0.0.0.0:8072" //"localhost:8072"
+	nonceServer      = "1P6*&%4u#w$M"
+	serverCreDir     = "./script/cred/server-cred"      //folder path to read server credentials(certs)
+	clientCredDir    = "./script/cred/client-cred-recv" //folder path to store client credentials(certs)
+	mma_path         = "./script/mma_config.json"       //tdx mma config file
+	psh_script       = "./script"
+	program_hashfile = "./script/server_hashOf_test-program"
 )
 
 // 定义签名算法映射
@@ -167,7 +168,7 @@ func (s *AttestationServer) handleClient(conn net.Conn) bool {
 	//8. Check the JWT token claims
 	expectPubkey := CallOpensslGetPubkey(clientCert)
 	expectPubkey = ExtractPubkeyFromPem(expectPubkey)
-	expectUserData := CalExptUserData(clientCert)
+	expectUserData := CalExptUserData(clientCert, program_hashfile)
 	checkTee, checkPubkey, checkNonce, checkUserData, err := ExtractAndCheckJWTCliams(clientJwtResult, expectPubkey, nonceServer, expectUserData) //client check Server's JWT claims,should be the clientNonce
 	verificationResult := "Failed"
 	if err != nil {

@@ -416,6 +416,23 @@ func Verify(sig64 []byte, msg32 []byte, publicKeys *Secp256k1FrostPubkey) int {
 	return int(result)
 }
 
+func IsPubkeyOdd(pubkey *Secp256k1FrostPubkey) int {
+	// Allocate memory for C pubkey
+	cPubkey := (*C.secp256k1_frost_pubkey)(C.malloc(C.size_t(unsafe.Sizeof(C.secp256k1_frost_pubkey{}))))
+	defer C.free(unsafe.Pointer(cPubkey))
+
+	// Explicitly copy fields from the Go pubkey struct to the C struct
+	cPubkey.index = C.uint32_t(pubkey.Index)
+	cPubkey.max_participants = C.uint32_t(pubkey.MaxParticipants)
+	goPublicKeyValue := (*[64]C.uchar)(unsafe.Pointer(&pubkey.PublicKey))[:]
+	copy(cPubkey.public_key[:], goPublicKeyValue)
+	goGroupPublicKeyValue := (*[64]C.uchar)(unsafe.Pointer(&pubkey.GroupPublicKey))[:]
+	copy(cPubkey.group_public_key[:], goGroupPublicKeyValue)
+
+	result := C.is_pubkey_odd(cPubkey)
+	return int(result)
+}
+
 // PerformDKGMultisig calls the C function perform_dkg_multisig
 func PerformDKGMultisig() {
 	C.perform_dkg_multisig()

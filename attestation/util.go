@@ -280,12 +280,14 @@ func ExtractAndCheck_TDXJWTCliams(jwtToken, exptPubKey, exptNonce, exptUserData 
 func ValidateJWTwithPSH(jwtToken string) (bool, error) {
 	// 1. 保存当前工作目录
 	currentDir, err := os.Getwd()
+	fmt.Printf("currentDir:%s\n", currentDir)
 	if err != nil {
 		return false, fmt.Errorf("failed to get current working directory: %v", err)
 	}
 
 	// 2. 设置工作目录
 	workDir := psh_script
+	fmt.Printf("workDir:%s\n", workDir)
 	if err := os.Chdir(workDir); err != nil {
 		return false, fmt.Errorf("failed to change directory to %s: %v", workDir, err)
 	}
@@ -299,11 +301,13 @@ func ValidateJWTwithPSH(jwtToken string) (bool, error) {
 	cmd.Stderr = &errOut
 
 	// 4. 执行命令并捕获输出
+	fmt.Printf("Start PowerShell Script\n")
 	if err := cmd.Run(); err != nil {
 		return false, fmt.Errorf("error running PowerShell command: %v\nstderr: %s", err, errOut.String())
 	}
 
 	// 5. 恢复原工作目录
+	fmt.Printf("Restore to original working directory\n")
 	if err := os.Chdir(currentDir); err != nil {
 		return false, fmt.Errorf("failed to restore original working directory: %v", err)
 	}
@@ -342,13 +346,24 @@ func GetPeerTeeType(jwtToken string) (string, error) {
 }
 
 /* Calculate the expected value of the user_data */
-func CalExptUserData(certPath string) string {
+func CalExptUserData(certPath string, hashFile string) string {
 	pubkey := CallOpensslGetPubkey(certPath)
 	pubkey = ExtractPubkeyFromPem(pubkey)
 	fmt.Println("pubkey used in calExptUserData:", pubkey)
+
+	//read the content from hashfile path
+	hashValue, err := ioutil.ReadFile(hashFile)
+	if err != nil {
+		fmt.Println("Error reading hash file:", err)
+		return ""
+	}
+	// hashValue = bytes.TrimSpace(hashValue)
+	hashValueStr := strings.TrimSpace(string(hashValue))
+
 	// Create JSON object
-	userDataJSON := map[string]string{
-		"user_data": pubkey,
+	userDataJSON := map[string]string{ //map是无序的;实际顺序是：prigramID->pubkey;已调整TPM注入脚本
+		"pubkey":    pubkey,
+		"programID": hashValueStr,
 	}
 	//Marshal the map into JSON bytes
 	userDataJSONBytes, err := json.Marshal(userDataJSON)
