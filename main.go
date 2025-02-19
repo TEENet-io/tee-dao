@@ -158,12 +158,13 @@ func main() {
 
 /* configuration const */
 const (
-	address       = "20.205.129.240:8072"
-	nonceClient   = "$Q9%*@JW#C%Y"                   // don't need to change
-	clientCredDir = "./script/cred/client-cred"      //folder path to read client credentials(certs)
-	serverCredDir = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
-	mma_path      = "./script/mma_config.json"       //tdx mma config file
-	psh_script    = "./script"
+	address          = "20.205.129.240:8072"
+	nonceClient      = "$Q9%*@JW#C%Y"                   // don't need to change
+	clientCredDir    = "./script/cred/client-cred"      //folder path to read client credentials(certs)
+	serverCredDir    = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
+	mma_path         = "./script/mma_config.json"       //tdx mma config file
+	psh_script       = "./script"
+	program_hashfile = "./script/server_hashOf_test-program"
 )
 
 func remoteAttestationWithCoordinator(name string) {
@@ -219,35 +220,6 @@ func remoteAttestationWithCoordinator(name string) {
 	fmt.Println("Send self JWT Result:", jwtResult)
 	attestation.SendMessage(conn, jwtResult)
 
-	// //6. receive server JWTResult and print it
-	// serverJwtResult := attestation.ReceiveMessage(conn)
-	// fmt.Println("Recv Server JWT Result:", serverJwtResult)
-
-	// //7. validate server JWTResult
-	// isValid, err := attestation.ValidateJWTwithPSH(serverJwtResult)
-	// if err != nil {
-	// 	fmt.Println("Error validating JWT:", err)
-	// } else {
-	// 	fmt.Println("JWT Validation Result:", isValid)
-	// }
-
-	// //8. Check the JWT token claims
-	// expectPubkey := attestation.CallOpensslGetPubkey(serverCredDir + "/server.crt")
-	// expectPubkey = attestation.ExtractPubkeyFromPem(expectPubkey)
-	// expectUserData := attestation.CalExptUserData(serverCredDir + "/server.crt")
-	// checkTee, checkPubkey, checkNonce, checkUserData, err := attestation.ExtractAndCheckJWTCliams(serverJwtResult, expectPubkey, nonceClient, expectUserData)
-	// verificationResult := "Failed"
-	// if err != nil {
-	// 	fmt.Println("Error checking JWT claims:", err)
-	// } else {
-	// 	if checkNonce && checkPubkey && checkTee && checkUserData {
-	// 		fmt.Println("Vlidation of JWT Claims passed")
-	// 		verificationResult = "Success"
-	// 	} else {
-	// 		fmt.Println("Vlidation of JWT Claims failed")
-	// 	}
-	// }
-	// attestation.SendMessage(conn, verificationResult)
 	result := attestation.ReceiveMessage(conn)
 	if result == "Success" {
 		fmt.Println("Server validation passed")

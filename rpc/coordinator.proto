@@ -24,7 +24,7 @@ message NodeConfig {
 
 // Request message for GetConfig RPC
 message GetConfigRequest {
-  NodeConfig participant_config = 1;
+  NodeConfig participantConfig = 1;
 }
 
 // Response message for GetConfig RPC
@@ -32,5 +32,5 @@ message GetConfigReply {
   bool success = 1;
   int32 threshold = 2;  // Threshold for DKG and multisig
   string leader = 3;    // Leader name
-  map<int32, NodeConfig> participant_configs = 4; // Participant configurations
+  map<int32, NodeConfig> participantConfigs = 4; // Participant configurations
 }

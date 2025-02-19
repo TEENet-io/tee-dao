@@ -16,12 +16,6 @@ type SignatureService struct {
 }
 
 func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest) (*pb.GetPubKeyReply, error) {
-	// check if the client is already attested
-	if _, ok := s.participant.attestationServer.AttestedServers.Load(in.UserName); !ok {
-		// wait for the server being added to attestedServers
-		s.participant.waitForClientBeAttested(in.UserName)
-	}
-
 	if !s.participant.dkgCompleted {
 		return &pb.GetPubKeyReply{
 			Success:        false,
@@ -36,14 +30,10 @@ func (s *SignatureService) GetPubKey(_ context.Context, in *pb.GetPubKeyRequest)
 }
 
 func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRequest) (*pb.GetSignatureReply, error) {
-	// check if the client is already attested
-	if _, ok := s.participant.attestationServer.AttestedServers.Load(in.UserName); !ok {
-		// wait for the server being added to attestedServers
-		s.participant.waitForClientBeAttested(in.UserName)
-	}
 	if !s.participant.readyForInitPreprocessing {
 		return &pb.GetSignatureReply{
 			Success:   false,
+			MsgHash:   nil,
 			Signature: nil,
 		}, errors.New("not ready for signature generation")
 	}
@@ -51,7 +41,7 @@ func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRe
 	// Create a new request
 	request := &Request{
 		Message:  in.Msg,
-		Response: make(chan []byte),
+		Response: make(chan MsgHashWithSig),
 	}
 
 	s.wg.Add(1)
@@ -67,22 +57,26 @@ func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRe
 	case <-s.participant.ctx.Done():
 		return &pb.GetSignatureReply{
 			Success:   false,
+			MsgHash:   nil,
 			Signature: nil,
 		}, errors.New("context cancelled")
-	case signature := <-request.Response:
-		if len(signature) != 64 {
+	case msgHashWithSig := <-request.Response:
+		if len(msgHashWithSig.MsgHash) != 32 || len(msgHashWithSig.Signature) != 64 {
 			return &pb.GetSignatureReply{
 				Success:   false,
+				MsgHash:   nil,
 				Signature: nil,
 			}, errors.New("invalid signature length")
 		}
 		return &pb.GetSignatureReply{
 			Success:   true,
-			Signature: signature,
+			MsgHash:   msgHashWithSig.MsgHash[:],
+			Signature: msgHashWithSig.Signature[:],
 		}, nil
 	case <-time.After(5 * time.Minute): // Timeout after 30 seconds
 		return &pb.GetSignatureReply{
 			Success:   false,
+			MsgHash:   nil,
 			Signature: nil,
 		}, errors.New("signature generation timeout")
 	}

@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"sync"
-	"tee-dao/attestation"
 	"tee-dao/comm"
 	"tee-dao/logger"
 	"unsafe"
@@ -19,8 +18,13 @@ import (
 // Request is a struct to store the request message and response channel for client
 type Request struct {
 	Message  []byte
-	Response chan []byte
+	Response chan MsgHashWithSig
 	Sequence int // Sequence number is set by the server
+}
+
+type MsgHashWithSig struct {
+	MsgHash   [32]byte
+	Signature [64]byte
 }
 
 // InitiatorSequence is a struct to store the initiator and sequence number pair
@@ -38,7 +42,6 @@ type Participant struct {
 	idNameMap                 map[int]string
 	config                    *comm.Config
 	communicator              *comm.Communicator // Communication layer
-	attestationServer         *attestation.AttestationServer
 	context                   []byte
 	tag                       []byte
 	commitments               sync.Map // map[int]*Secp256k1FrostVssCommitments
@@ -125,9 +128,6 @@ func NewParticipant(dkgLeader string, config *comm.Config, isDKGLeader bool, id 
 	p.communicator.RegisterHandler("SignRequest", SignRequest, p.handleSignRequest)
 	p.communicator.RegisterHandler("SignatureShareResponse", SignatureShareResponse, p.handleSignatureShareResponse)
 
-	// Initialize the attestation server
-	p.attestationServer = attestation.NewAttestationServer(ctx, config.Name)
-
 	// Register the node communication service for client requests
 	nodeCommService := &comm.NodeCommService{Communicator: p.communicator}
 	err = p.communicator.RegisterRPCService(nodeCommService)
@@ -150,13 +150,6 @@ func NewParticipant(dkgLeader string, config *comm.Config, isDKGLeader bool, id 
 // Start initializes and starts the communicator
 func (p *Participant) Start() error {
 
-	// Add to the WaitGroup for handling messages
-	p.wg.Add(1)
-	go func() {
-		defer p.wg.Done()
-		p.attestationServer.ListenAttestation()
-	}()
-
 	p.wg.Add(1)
 	go func() {
 		defer p.wg.Done()
@@ -176,11 +169,6 @@ func (p *Participant) Close() error {
 	// Cancel the context to stop the message handling loop
 	p.cancel()
 
-	// Close the attestation server
-	if p.attestationServer != nil {
-		p.attestationServer.Close()
-	}
-
 	// Close the communicator
 	if p.communicator != nil {
 		p.communicator.Close()
@@ -190,18 +178,6 @@ func (p *Participant) Close() error {
 	p.wg.Wait()
 	p.logger.Info("Participant shut down.")
 	return nil
-}
-
-func (p *Participant) waitForClientBeAttested(name string) {
-	p.attestationServer.AttestedCond.L.Lock()
-	defer p.attestationServer.AttestedCond.L.Unlock()
-
-	for {
-		if _, ok := p.attestationServer.AttestedServers.Load(name); ok {
-			return
-		}
-		p.attestationServer.AttestedCond.Wait()
-	}
 }
 
 // sendMessage sends a message to a specific participant.
@@ -1040,8 +1016,9 @@ func (p *Participant) handleSignatureShareResponse(msg *pb.NodeMsg) error {
 	}
 	p.requests.Delete(receivedSignatureShare.InitiatorSequence.Sequence)
 
-	// Send the aggregated signature to the client
-	req.(*Request).Response <- aggregateSignature[:]
+	// Send the msg hash with aggregated signature to the client
+	msgHashWithSig := MsgHashWithSig{receivedSignatureShare.Msg_hash, aggregateSignature}
+	req.(*Request).Response <- msgHashWithSig
 
 	return nil
 }

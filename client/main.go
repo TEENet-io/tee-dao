@@ -8,10 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net"
 	"os"
-	"strings"
-	"tee-dao/attestation"
 	pb "tee-dao/rpc"
 
 	"google.golang.org/grpc"
@@ -91,9 +88,6 @@ func main() {
 		return
 	}
 
-	// Remote Attestation with the server
-	remoteAttestationWithServer(clientConfig.Name)
-
 	// Create a TLS configuration for the client
 	tlsConfig, err := createTLSConfig(clientConfig.Cert, clientConfig.Key, clientConfig.ServerCACert)
 	if err != nil {
@@ -131,106 +125,6 @@ func main() {
 
 	// Output the signature
 	fmt.Printf("Success: %v\n", getSignatureReply.GetSuccess())
+	fmt.Printf("MsgHash: %x\n", getSignatureReply.GetMsgHash())
 	fmt.Printf("Signature: %x\n", getSignatureReply.GetSignature())
-}
-
-/* configuration const */
-const (
-	address          = "20.189.73.225:8072"
-	nonceClient      = "$Q9%*@JW#C%Y"                   // don't need to change
-	clientCredDir    = "./script/cred/client-cred"      //folder path to read client credentials(certs)
-	serverCredDir    = "./script/cred/server-cred-recv" //folder path to store server credentials(certs)
-	mma_path         = "./script/mma_config.json"       //tdx mma config file
-	psh_script       = "./script"
-	program_hashfile = "./script/server_hashOf_test-program"
-)
-
-func remoteAttestationWithServer(name string) {
-	//1.client establish socket with server（ip:localhost, port:8071）
-	conn, err := net.Dial("tcp", address)
-	if err != nil {
-		fmt.Println("Error connecting to server:", err)
-		return
-	}
-	defer conn.Close()
-
-	//2.client send: nonce(12-byte length in string format), client-ca.crt, client.crt
-	//2.1 Access these file. The directory path of all these files located：./script/cred/client-cred
-	//2.2 Sent to the server;
-	attestation.SendMessage(conn, nonceClient)
-	attestation.SendMessage(conn, name)
-	myCACert := clientCredDir + "/" + name + "-ca.crt"
-	myCert := clientCredDir + "/" + name + ".crt"
-	attestation.SendFile(conn, myCACert)
-	attestation.SendFile(conn, myCert)
-
-	//3. receive server nonce,server-ca.crt, server.crt; And store them in "./script/cred/server-cred-recv" folder
-	serverNonce := attestation.ReceiveMessage(conn)
-	fmt.Println("Server Nonce:", serverNonce)
-	attestation.ReceiveFile(conn, serverCredDir+"/server-ca.crt")
-	attestation.ReceiveFile(conn, serverCredDir+"/server.crt")
-
-	//4. call the system tool and obtain the return result, stored in JWTResult
-	extractPubkey := attestation.CallOpensslGetPubkey(myCert)
-	extractPubkey = attestation.ExtractPubkeyFromPem(extractPubkey)
-	fmt.Println("Extracted Public Key:", extractPubkey)
-
-	machineName, err := os.Hostname()
-	fmt.Println("Machine Name:", machineName)
-	jwtResult := ""
-	if err != nil {
-		fmt.Println("Error getting machine name:", err)
-		return
-	}
-	if strings.Contains(strings.ToUpper(machineName), "SNP") {
-		fmt.Println("callSNPAttestationClient")
-		jwtResult = attestation.CallSNPAttestationClient(serverNonce + extractPubkey)
-
-	} else if strings.Contains(strings.ToUpper(machineName), "TDX") {
-		fmt.Println("callTDXAttestationClient")
-		jwtResult = attestation.CallTDXAttestationClient(serverNonce+extractPubkey, mma_path)
-	} else {
-		fmt.Println("Unsupported machine type")
-		return
-	}
-
-	//5. client send JWTResult to server
-	fmt.Println("Send self JWT Result:", jwtResult)
-	attestation.SendMessage(conn, jwtResult)
-
-	//6. receive server JWTResult and print it
-	serverJwtResult := attestation.ReceiveMessage(conn)
-	fmt.Println("Recv Server JWT Result:", serverJwtResult)
-
-	//7. validate server JWTResult
-	isValid, err := attestation.ValidateJWTwithPSH(serverJwtResult)
-	if err != nil {
-		fmt.Println("Error validating JWT:", err)
-	} else {
-		fmt.Println("JWT Validation Result:", isValid)
-	}
-
-	//8. Check the JWT token claims
-	expectPubkey := attestation.CallOpensslGetPubkey(serverCredDir + "/server.crt")
-	expectPubkey = attestation.ExtractPubkeyFromPem(expectPubkey)
-	expectUserData := attestation.CalExptUserData(serverCredDir+"/server.crt", program_hashfile)
-	checkTee, checkPubkey, checkNonce, checkUserData, err := attestation.ExtractAndCheckJWTCliams(serverJwtResult, expectPubkey, nonceClient, expectUserData)
-	verificationResult := "Failed"
-	if err != nil {
-		fmt.Println("Error checking JWT claims:", err)
-	} else {
-		if checkNonce && checkPubkey && checkTee && checkUserData {
-			fmt.Println("Vlidation of JWT Claims passed")
-			verificationResult = "Success"
-		} else {
-			fmt.Println("Vlidation of JWT Claims failed")
-		}
-	}
-	attestation.SendMessage(conn, verificationResult)
-	result := attestation.ReceiveMessage(conn)
-	if result == "Success" {
-		fmt.Println("Server validation passed")
-	} else {
-		fmt.Println("Server validation failed")
-	}
 }

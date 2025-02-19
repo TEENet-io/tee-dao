@@ -12,11 +12,11 @@ service NodeComm {
 }
 
 message NodeMsg {
-  uint32 msg_type = 1;
+  uint32 msgType = 1;
   bytes data = 2;
   string from = 3;
   string to = 4;
-  google.protobuf.Timestamp create_at = 5;
+  google.protobuf.Timestamp createAt = 5;
 }
 
 message NodeReply {

@@ -34,6 +34,7 @@ func (s *CoordinatorService) GetConfig(_ context.Context, in *pb.GetConfigReques
 
 	s.coordinator.configCond.L.Lock()
 	for countSyncMapElements(&s.coordinator.participantConfigs) < s.coordinator.config.NodesNum {
+		s.coordinator.logger.With("func", "GetConfig").Debug("Waiting for all nodes to send their configs, current count", "currentCount", countSyncMapElements(&s.coordinator.participantConfigs))
 		s.coordinator.configCond.Wait()
 	}
 	s.coordinator.configCond.L.Unlock()

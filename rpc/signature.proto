@@ -20,7 +20,7 @@ message GetPubKeyRequest {
 // The response message containing the the state and the pubkey
 message GetPubKeyReply {
   bool success = 1;
-  bytes group_public_key = 2;
+  bytes groupPublicKey = 2;
 }
 
 // The request message containing the message to sign.
@@ -32,5 +32,6 @@ message GetSignatureRequest {
 // The response message containing the signature.
 message GetSignatureReply {
   bool success = 1;           // Whether the signing operation was successful
-  bytes signature = 2;        // The generated signature (64-byte signature)
+  bytes msgHash = 2;         // The hash of the message (32-byte hash)
+  bytes signature = 3;        // The generated signature (64-byte signature)
 }
