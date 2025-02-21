@@ -7,10 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -37,7 +37,7 @@ func ReceiveMessage(conn net.Conn) string {
 }
 
 func SendFile(conn net.Conn, filePath string) {
-	data, err := ioutil.ReadFile(filePath)
+	data, err := os.ReadFile(filePath)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
 		return
@@ -54,7 +54,16 @@ func ReceiveFile(conn net.Conn, filePath string) {
 	length := int(buf[0])<<24 | int(buf[1])<<16 | int(buf[2])<<8 | int(buf[3])
 	data := make([]byte, length)
 	conn.Read(data)
-	ioutil.WriteFile(filePath, data, 0644)
+	// Create the directory if it does not exist
+	dir := filepath.Dir(filePath)
+	err := os.MkdirAll(dir, 0755)
+	if err != nil {
+		fmt.Println("Error creating directories:", err)
+	}
+	err = os.WriteFile(filePath, data, 0644)
+	if err != nil {
+		fmt.Println("Error writing file:", err)
+	}
 }
 
 /* Read the pubkey from the pem.file in certain format */
@@ -352,7 +361,7 @@ func CalExptUserData(certPath string, hashFile string) string {
 	fmt.Println("pubkey used in calExptUserData:", pubkey)
 
 	//read the content from hashfile path
-	hashValue, err := ioutil.ReadFile(hashFile)
+	hashValue, err := os.ReadFile(hashFile)
 	if err != nil {
 		fmt.Println("Error reading hash file:", err)
 		return ""
