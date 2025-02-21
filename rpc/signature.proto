@@ -26,12 +26,11 @@ message GetPubKeyReply {
 // The request message containing the message to sign.
 message GetSignatureRequest {
   string userName = 1;  // The user's name
-  bytes msg = 2;  // The message to sign
+  bytes msg = 2;  // The message to sign (32-byte hash)
 }
 
 // The response message containing the signature.
 message GetSignatureReply {
   bool success = 1;           // Whether the signing operation was successful
-  bytes msgHash = 2;         // The hash of the message (32-byte hash)
-  bytes signature = 3;        // The generated signature (64-byte signature)
+  bytes signature = 2;        // The generated signature (64-byte signature)
 }

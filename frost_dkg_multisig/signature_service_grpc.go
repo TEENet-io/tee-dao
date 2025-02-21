@@ -33,15 +33,21 @@ func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRe
 	if !s.participant.readyForInitPreprocessing {
 		return &pb.GetSignatureReply{
 			Success:   false,
-			MsgHash:   nil,
 			Signature: nil,
 		}, errors.New("not ready for signature generation")
 	}
 
 	// Create a new request
+	if len(in.Msg) != 32 {
+		return &pb.GetSignatureReply{
+			Success:   false,
+			Signature: nil,
+		}, errors.New("invalid msg hash length")
+	}
+
 	request := &Request{
-		Message:  in.Msg,
-		Response: make(chan MsgHashWithSig),
+		Message:  [32]byte(in.Msg),
+		Response: make(chan []byte),
 	}
 
 	s.wg.Add(1)
@@ -57,26 +63,22 @@ func (s *SignatureService) GetSignature(_ context.Context, in *pb.GetSignatureRe
 	case <-s.participant.ctx.Done():
 		return &pb.GetSignatureReply{
 			Success:   false,
-			MsgHash:   nil,
 			Signature: nil,
 		}, errors.New("context cancelled")
-	case msgHashWithSig := <-request.Response:
-		if len(msgHashWithSig.MsgHash) != 32 || len(msgHashWithSig.Signature) != 64 {
+	case signature := <-request.Response:
+		if len(signature) != 64 {
 			return &pb.GetSignatureReply{
 				Success:   false,
-				MsgHash:   nil,
 				Signature: nil,
-			}, errors.New("invalid signature length")
+			}, errors.New("fail to sign, invalid signature length")
 		}
 		return &pb.GetSignatureReply{
 			Success:   true,
-			MsgHash:   msgHashWithSig.MsgHash[:],
-			Signature: msgHashWithSig.Signature[:],
+			Signature: signature,
 		}, nil
-	case <-time.After(5 * time.Minute): // Timeout after 30 seconds
+	case <-time.After(1 * time.Minute): // Timeout after 1 minute
 		return &pb.GetSignatureReply{
 			Success:   false,
-			MsgHash:   nil,
 			Signature: nil,
 		}, errors.New("signature generation timeout")
 	}

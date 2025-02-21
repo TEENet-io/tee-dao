@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -117,7 +118,15 @@ func main() {
 	fmt.Printf("Success: %v\n", getPubKeyReply.GetSuccess())
 	fmt.Printf("Group Public Key: %x\n", getPubKeyReply.GetGroupPublicKey())
 
-	getSignatureRequest := &pb.GetSignatureRequest{Msg: []byte("hello1")}
+	// Generate a random msg hash
+	msgHash := make([]byte, 32)
+	_, err = rand.Read(msgHash)
+	if err != nil {
+		log.Fatalf("Error generating random message hash: %v", err)
+	}
+	fmt.Printf("Message Hash: %x\n", msgHash)
+
+	getSignatureRequest := &pb.GetSignatureRequest{Msg: msgHash}
 	getSignatureReply, err := client.GetSignature(context.Background(), getSignatureRequest)
 	if err != nil {
 		log.Fatalf("Error calling GetSignature: %v", err)
@@ -125,6 +134,5 @@ func main() {
 
 	// Output the signature
 	fmt.Printf("Success: %v\n", getSignatureReply.GetSuccess())
-	fmt.Printf("MsgHash: %x\n", getSignatureReply.GetMsgHash())
 	fmt.Printf("Signature: %x\n", getSignatureReply.GetSignature())
 }

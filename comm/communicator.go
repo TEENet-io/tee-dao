@@ -265,8 +265,8 @@ func (c *Communicator) dial(peerName string) (*grpc.ClientConn, error) {
 	}
 
 	keepaliveParams := keepalive.ClientParameters{
-		Time:                5 * time.Minute,  // send pings every 5 min if there is no activity
-		Timeout:             30 * time.Second, // wait 20 second for ping ack before considering the connection dead
+		Time:                10 * time.Minute, // send pings every 10 min if there is no activity
+		Timeout:             30 * time.Second, // wait 30 second for ping ack before considering the connection dead
 		PermitWithoutStream: true,             // send pings even without active streams
 	}
 

@@ -154,11 +154,10 @@ func (c *Coordinator) getNodesConfig(participantConfig *rpc.NodeConfig) bool {
 		return false
 	}
 
-	// Store the participant configuration
-	c.participantConfigs.Store(int32(c.participantID), participantConfig)
+	// Store the participant configuration and increase the participant ID
 	c.mu.Lock()
+	c.participantConfigs.Store(int32(c.participantID), participantConfig)
 	c.participantID++
-	c.mu.Unlock()
 
 	// Check if all participants' configurations have been received
 	participantConfigsNum := countSyncMapElements(&c.participantConfigs)
@@ -175,6 +174,7 @@ func (c *Coordinator) getNodesConfig(participantConfig *rpc.NodeConfig) bool {
 		// Broadcast that all configurations have been received
 		c.configCond.Broadcast()
 	}
+	c.mu.Unlock()
 
 	return true
 }

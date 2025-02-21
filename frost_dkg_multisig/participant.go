@@ -17,14 +17,9 @@ import (
 
 // Request is a struct to store the request message and response channel for client
 type Request struct {
-	Message  []byte
-	Response chan MsgHashWithSig
-	Sequence int // Sequence number is set by the server
-}
-
-type MsgHashWithSig struct {
-	MsgHash   [32]byte
-	Signature [64]byte
+	Message  [32]byte    // Message to be signed (32-byte hash)
+	Response chan []byte // Signature response (64-byte)
+	Sequence int         // Sequence number is set by the server
 }
 
 // InitiatorSequence is a struct to store the initiator and sequence number pair
@@ -457,13 +452,7 @@ func (p *Participant) initiateSigning(initiatorSequence InitiatorSequence) error
 		p.logger.With("func", "initiateSigning").Error("Message not found for initiatorSequence", "initiatorSequence", initiatorSequence)
 		return errors.New("message not found")
 	}
-	var msgHash [32]byte
-	msg := value.([]byte)
-	result := TaggedSha256(&msgHash, p.tag, msg)
-	if result != 1 {
-		p.logger.With("func", "initiateSigning").Error("Error in creating tagged msg hash")
-		return errors.New("error in creating tagged msg hash")
-	}
+	msgHash := value.([32]byte)
 	p.logger.With("func", "initiateSigning").Debug("Initiating signing process")
 
 	// Randomly choose the minimum signers to send the SignRequest
@@ -514,7 +503,7 @@ func (p *Participant) initiateSigning(initiatorSequence InitiatorSequence) error
 	nonce := value.(*Secp256k1FrostNonce)
 	p.logger.With("func", "initiateSigning").Debug("Generating signature share", "msgHash", msgHash, "minSigner", p.minSigner, "key pair", p.keypair, "nonces", nonce, "nonce commitment", nonceCommitment)
 	var signatureShare Secp256k1FrostSignatureShare
-	result = Sign(
+	result := Sign(
 		&signatureShare,
 		msgHash[:],
 		uint32(p.minSigner),
@@ -1016,9 +1005,8 @@ func (p *Participant) handleSignatureShareResponse(msg *pb.NodeMsg) error {
 	}
 	p.requests.Delete(receivedSignatureShare.InitiatorSequence.Sequence)
 
-	// Send the msg hash with aggregated signature to the client
-	msgHashWithSig := MsgHashWithSig{receivedSignatureShare.Msg_hash, aggregateSignature}
-	req.(*Request).Response <- msgHashWithSig
+	// Send the aggregated signature to the client
+	req.(*Request).Response <- aggregateSignature[:]
 
 	return nil
 }
